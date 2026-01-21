@@ -28,14 +28,14 @@ export function renderFeedback(appEl, state, { correct, current, userAnswer }, d
         ${safeFront}
       </div>
 
-      <p class="help" style="text-align:center; margin-bottom:6px;">
-        <strong>Answer</strong>
+      <p class="help" style="text-align:left; margin-bottom:6px;">
+        <strong>Your Answer</strong>
       </p>
       <div class="card" style="border-radius:10px; padding:12px;">
         <pre style="margin:0; white-space:pre-wrap; font-family:inherit;">${safeUser}</pre>
       </div>
 
-      <p class="help" style="text-align:center; margin:14px 0 6px;">
+      <p class="help" style="text-align:left; margin:14px 0 6px;">
         <strong>Correct Answer</strong>
       </p>
       <div class="card" style="border-radius:10px; padding:12px;">
