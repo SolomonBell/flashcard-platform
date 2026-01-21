@@ -21,8 +21,8 @@ export function renderLearn(appEl, state, current, deps) {
         ${current.front}
       </div>
 
-      <p class="help" style="text-align:center; margin-bottom:10px;">
-        Choose the correct answer:
+      <p class="help" style="text-align:left; margin-bottom:10px;">
+        Choose the Correct Answer:
       </p>
 
       <div id="mcWrap" style="display:grid; gap:10px;">
