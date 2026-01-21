@@ -26,11 +26,15 @@ export function renderLearn(appEl, state, current, deps) {
       </p>
 
       <div id="mcWrap" style="display:grid; gap:10px;">
-        ${options.map((opt, i) => `
+        ${options
+          .map(
+            (opt, i) => `
           <button class="mcOpt" data-idx="${i}">
             ${opt.text}
           </button>
-        `).join("")}
+        `
+          )
+          .join("")}
       </div>
 
       <div class="btns" style="margin-top:16px;">
@@ -39,7 +43,9 @@ export function renderLearn(appEl, state, current, deps) {
     </section>
   `;
 
+  // --- Navigation
   appEl.querySelector("#backToCreate").addEventListener("click", () => {
+    cleanupKeyHandler();
     deps.setScreen("create");
     deps.save();
     deps.renderAll();
@@ -48,8 +54,8 @@ export function renderLearn(appEl, state, current, deps) {
   const mcWrap = appEl.querySelector("#mcWrap");
   const buttons = Array.from(appEl.querySelectorAll(".mcOpt"));
 
-  // step: "answer" -> first click shows feedback
-  // step: "ready"  -> next click advances
+  // step: "answer" -> first click/keypress shows feedback
+  // step: "ready"  -> next click/keypress advances
   let step = "answer";
 
   function revealCorrect() {
@@ -60,6 +66,7 @@ export function renderLearn(appEl, state, current, deps) {
 
   function answerWithIndex(idx) {
     if (step !== "answer") return;
+
     const btn = buttons[idx];
     if (!btn) return;
 
@@ -75,17 +82,25 @@ export function renderLearn(appEl, state, current, deps) {
     }
 
     // Apply Learn-stage logic immediately
-    const c = state.cards.find(x => x.id === current.id);
+    const c = state.cards.find((x) => x.id === current.id);
     if (!c) return;
 
-    if (choice.isCorrect) c.stage = 2; // correct -> Stage 2
+    if (choice.isCorrect) {
+      c.stage = 2; // correct -> Stage 2
+    }
+
     deps.save();
 
-    // Reveal correct after a brief delay, then allow click/keypress to continue
+    // Reveal correct after a brief delay, then allow continue
     setTimeout(() => {
       revealCorrect();
       step = "ready";
-    }, 300);
+    }, 250);
+  }
+
+  function advance() {
+    cleanupKeyHandler();
+    deps.renderAll();
   }
 
   // Click behavior:
@@ -98,45 +113,51 @@ export function renderLearn(appEl, state, current, deps) {
     const idx = Number(btn.getAttribute("data-idx"));
 
     if (step === "ready") {
-      deps.renderAll();
+      advance();
       return;
     }
 
     answerWithIndex(idx);
   });
 
-  // Keyboard shortcuts: 1–4 select choices (equivalent to clicking)
+  // --- Keyboard shortcuts: 1–4 select choices
   function onKeyDown(e) {
     // Don't interfere with browser shortcuts
     if (e.metaKey || e.ctrlKey || e.altKey) return;
 
     const k = e.key;
 
-    // If ready, any of 1-4 should act like clicking again (advance)
-    if (step === "ready" && (k === "1" || k === "2" || k === "3" || k === "4")) {
-      e.preventDefault();
-      deps.renderAll();
+    // Only respond to 1-4 keys
+    if (k !== "1" && k !== "2" && k !== "3" && k !== "4") return;
+
+    e.preventDefault();
+
+    if (step === "ready") {
+      advance();
       return;
     }
 
     if (step !== "answer") return;
 
-    if (k === "1" || k === "2" || k === "3" || k === "4") {
-      e.preventDefault();
-      const idx = Number(k) - 1;
-      if (idx < buttons.length) {
-        answerWithIndex(idx);
-      }
-    }
+    const idx = Number(k) - 1;
+    if (idx < buttons.length) answerWithIndex(idx);
   }
 
-  document.addEventListener("keydown", onKeyDown);
+  // Prevent stacking key listeners across rerenders:
+  // store the active handler globally and replace it each time.
+  installKeyHandler(onKeyDown);
 
-  // Clean up listener when screen changes (prevents stacking listeners)
-  // We remove it right before leaving via renderAll / backToCreate naturally because screen rerenders.
-  const origRenderAll = deps.renderAll;
-  deps.renderAll = () => {
-    document.removeEventListener("keydown", onKeyDown);
-    origRenderAll();
-  };
+  // ---------- helpers: global key handler mgmt ----------
+  function installKeyHandler(handler) {
+    cleanupKeyHandler();
+    window.__learnKeyHandler = handler;
+    document.addEventListener("keydown", handler);
+  }
+
+  function cleanupKeyHandler() {
+    if (window.__learnKeyHandler) {
+      document.removeEventListener("keydown", window.__learnKeyHandler);
+      window.__learnKeyHandler = null;
+    }
+  }
 }
