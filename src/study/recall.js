@@ -81,7 +81,7 @@ export function renderRecall(appEl, state, current, deps) {
           showCorrect
             ? `
               <div style="margin-top:14px;">
-                <p class="help" style="text-align:center; margin:0 0 8px;">
+                <p class="help" style="text-align:left; margin:0 0 8px;">
                   <strong>Correct Answer</strong>
                 </p>
                 <div
