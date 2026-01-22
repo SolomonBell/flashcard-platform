@@ -39,8 +39,13 @@ export function renderRecall(appEl, state, current, deps) {
           : "#fecaca" // light red
         : "#ffffff";
 
-    const showReview = step === "result" && lastResult; // show review block after submit
-    const showCorrectBlock = showReview && !lastResult.isCorrect; // only show correct answer when wrong
+    const showReview = step === "result" && lastResult;
+    const isWrong = showReview && !lastResult.isCorrect;
+
+    // Label above the textarea:
+    // - while answering: "Type the Correct Answer:"
+    // - if wrong after submit: "Your Answer:"
+    const topLabel = isWrong ? "Your Answer:" : "Type the Correct Answer:";
 
     appEl.innerHTML = `
       <section class="card">
@@ -60,7 +65,7 @@ export function renderRecall(appEl, state, current, deps) {
         </div>
 
         <p class="help" style="text-align:left; margin-bottom:10px;">
-          Type the Correct Answer:
+          ${topLabel}
         </p>
 
         <textarea
@@ -83,43 +88,24 @@ export function renderRecall(appEl, state, current, deps) {
         ></textarea>
 
         ${
-          showReview
+          isWrong
             ? `
               <div style="margin-top:14px;">
-                ${
-                  showCorrectBlock
-                    ? `
-                      <p class="help" style="text-align:left; margin:0 0 6px;">
-                        <strong>Your Answer</strong>
-                      </p>
-                      <div class="card" style="border-radius:10px; padding:12px;">
-                        <pre style="margin:0; white-space:pre-wrap; font-family:inherit;">${escapeHtml(
-                          lastResult.userAnswer
-                        )}</pre>
-                      </div>
-
-                      <p class="help" style="text-align:left; margin:14px 0 6px;">
-                        <strong>Correct Answer</strong>
-                      </p>
-                      <div
-                        class="card"
-                        style="
-                          border-radius:10px;
-                          padding:12px;
-                          background:#bbf7d0;
-                        "
-                      >
-                        <pre style="margin:0; white-space:pre-wrap; font-family:inherit;">${escapeHtml(
-                          lastResult.correctAnswer
-                        )}</pre>
-                      </div>
-                    `
-                    : `
-                      <p class="help" style="text-align:left; margin:0;">
-                        <strong>Nice!</strong> Click Next to continue.
-                      </p>
-                    `
-                }
+                <p class="help" style="text-align:left; margin:0 0 6px;">
+                  Correct Answer:
+                </p>
+                <div
+                  class="card"
+                  style="
+                    border-radius:10px;
+                    padding:12px;
+                    background:#bbf7d0;
+                  "
+                >
+                  <pre style="margin:0; white-space:pre-wrap; font-family:inherit;">${escapeHtml(
+                    lastResult.correctAnswer
+                  )}</pre>
+                </div>
               </div>
             `
             : ""
