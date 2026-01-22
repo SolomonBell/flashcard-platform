@@ -7,16 +7,22 @@ export function renderFeedback(appEl, state, { correct, current, userAnswer }, d
   const safeCorrect = escapeHtml(current.back ?? "");
   const safeUser = escapeHtml(userAnswer ?? "");
 
+  function resetStudyProgress() {
+    state.cards = (state.cards || []).map((c) => ({
+      ...c,
+      stage: 1,
+      stage3Mastered: false,
+    }));
+  }
+
   appEl.innerHTML = `
     <section class="card">
       ${progress}
 
-      <!-- Centered result title -->
       <h2 style="margin:12px 0 10px; text-align:center;">
         ${correct ? "✅ Correct" : "❌ Incorrect"}
       </h2>
 
-      <!-- Front prompt: large, bold, centered -->
       <div
         style="
           font-size:1.6rem;
@@ -29,14 +35,14 @@ export function renderFeedback(appEl, state, { correct, current, userAnswer }, d
       </div>
 
       <p class="help" style="text-align:left; margin-bottom:6px;">
-        <strong>Your Answer</strong>
+        Your Answer:
       </p>
       <div class="card" style="border-radius:10px; padding:12px;">
         <pre style="margin:0; white-space:pre-wrap; font-family:inherit;">${safeUser}</pre>
       </div>
 
       <p class="help" style="text-align:left; margin:14px 0 6px;">
-        <strong>Correct Answer</strong>
+        Correct Answer:
       </p>
       <div class="card" style="border-radius:10px; padding:12px;">
         <pre style="margin:0; white-space:pre-wrap; font-family:inherit;">${safeCorrect}</pre>
@@ -51,6 +57,7 @@ export function renderFeedback(appEl, state, { correct, current, userAnswer }, d
 
   appEl.querySelector("#nextBtn").addEventListener("click", () => deps.next());
   appEl.querySelector("#backToCreate2").addEventListener("click", () => {
+    resetStudyProgress();
     deps.setScreen("create");
     deps.save();
     deps.renderAll();

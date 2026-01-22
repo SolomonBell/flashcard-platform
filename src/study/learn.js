@@ -58,6 +58,15 @@ export function renderLearn(appEl, state, current, deps) {
     }
   }
 
+  function resetStudyProgress() {
+    // Reset all progress so Create edits always start fresh
+    state.cards = (state.cards || []).map((c) => ({
+      ...c,
+      stage: 1,
+      stage3Mastered: false,
+    }));
+  }
+
   function advance() {
     cleanupKeyHandler();
     deps.renderAll();
@@ -66,27 +75,25 @@ export function renderLearn(appEl, state, current, deps) {
   // --- Navigation
   appEl.querySelector("#backToCreate").addEventListener("click", () => {
     cleanupKeyHandler();
+    resetStudyProgress();
     deps.setScreen("create");
     deps.save();
     deps.renderAll();
   });
 
   nextBtn.addEventListener("click", () => {
-    // only advance once we've revealed / are ready
     if (step === "ready") advance();
   });
 
   const mcWrap = appEl.querySelector("#mcWrap");
   const buttons = Array.from(appEl.querySelectorAll(".mcOpt"));
 
-  // step: "answer" -> first click shows feedback
-  // step: "ready"  -> next click (or Next button) advances
   let step = "answer";
   setNextEnabled(false);
 
   function revealCorrect() {
     buttons.forEach((b, i) => {
-      if (options[i].isCorrect) b.style.background = "#bbf7d0"; // light green
+      if (options[i].isCorrect) b.style.background = "#bbf7d0";
     });
   }
 
@@ -100,24 +107,21 @@ export function renderLearn(appEl, state, current, deps) {
 
     const choice = options[idx];
 
-    // Immediate color on selected
     if (choice.isCorrect) {
-      btn.style.background = "#bbf7d0"; // light green
+      btn.style.background = "#bbf7d0";
     } else {
-      btn.style.background = "#fecaca"; // light red
+      btn.style.background = "#fecaca";
     }
 
-    // Apply Learn-stage logic immediately
     const c = state.cards.find((x) => x.id === current.id);
     if (!c) return;
 
     if (choice.isCorrect) {
-      c.stage = 2; // correct -> Stage 2
+      c.stage = 2;
     }
 
     deps.save();
 
-    // Reveal correct after a brief delay, then allow continue
     setTimeout(() => {
       revealCorrect();
       step = "ready";
@@ -125,9 +129,6 @@ export function renderLearn(appEl, state, current, deps) {
     }, 250);
   }
 
-  // Click behavior:
-  // - first click answers
-  // - second click advances
   mcWrap.addEventListener("click", (e) => {
     const btn = e.target.closest(".mcOpt");
     if (!btn) return;
@@ -142,13 +143,11 @@ export function renderLearn(appEl, state, current, deps) {
     answerWithIndex(idx);
   });
 
-  // --- Keyboard shortcuts: 1–4 select choices
   function onKeyDown(e) {
     if (e.metaKey || e.ctrlKey || e.altKey) return;
 
     const k = e.key;
 
-    // If ready: any of 1-4 advances (keeps your existing behavior)
     if (step === "ready" && (k === "1" || k === "2" || k === "3" || k === "4")) {
       e.preventDefault();
       advance();
@@ -164,7 +163,6 @@ export function renderLearn(appEl, state, current, deps) {
     }
   }
 
-  // Prevent stacking key listeners across rerenders
   cleanupKeyHandler();
   window.__learnKeyHandler = onKeyDown;
   document.addEventListener("keydown", onKeyDown);

@@ -29,22 +29,27 @@ export function renderRecall(appEl, state, current, deps) {
     }
   }
 
+  function resetStudyProgress() {
+    state.cards = (state.cards || []).map((c) => ({
+      ...c,
+      stage: 1,
+      stage3Mastered: false,
+    }));
+  }
+
   function render() {
     const frontHtml = escapeHtml(current.front ?? "");
 
     const inputBg =
       step === "result" && lastResult
         ? lastResult.isCorrect
-          ? "#bbf7d0" // light green
-          : "#fecaca" // light red
+          ? "#bbf7d0"
+          : "#fecaca"
         : "#ffffff";
 
     const showReview = step === "result" && lastResult;
     const isWrong = showReview && !lastResult.isCorrect;
 
-    // Label above the textarea:
-    // - while answering: "Type the Correct Answer:"
-    // - if wrong after submit: "Your Answer:"
     const topLabel = isWrong ? "Your Answer:" : "Type the Correct Answer:";
 
     appEl.innerHTML = `
@@ -76,11 +81,9 @@ export function renderRecall(appEl, state, current, deps) {
             min-height:90px;
             margin-top:0px;
 
-            /* Force the feedback color to show even if CSS tries to override */
             background:${inputBg} !important;
             background-color:${inputBg} !important;
 
-            /* Prevent browsers from “washing out” readonly styles */
             opacity:1 !important;
             -webkit-text-fill-color: inherit;
           "
@@ -124,12 +127,12 @@ export function renderRecall(appEl, state, current, deps) {
 
     const inputEl = appEl.querySelector("#recallInput");
 
-    // Preserve typed answer after re-render
     if (lastResult?.userAnswer != null) {
       inputEl.value = lastResult.userAnswer;
     }
 
     appEl.querySelector("#backToCreate").addEventListener("click", () => {
+      resetStudyProgress();
       deps.setScreen("create");
       deps.save();
       deps.renderAll();
