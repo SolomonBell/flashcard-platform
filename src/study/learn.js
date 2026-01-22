@@ -37,11 +37,31 @@ export function renderLearn(appEl, state, current, deps) {
           .join("")}
       </div>
 
-      <div class="btns" style="margin-top:16px;">
+      <div class="btns" style="margin-top:16px; justify-content:space-between;">
         <button class="danger" id="backToCreate">Back to Create</button>
+        <button class="primary" id="nextBtn" disabled>Next</button>
       </div>
     </section>
   `;
+
+  const nextBtn = appEl.querySelector("#nextBtn");
+
+  function setNextEnabled(enabled) {
+    if (!nextBtn) return;
+    nextBtn.disabled = !enabled;
+  }
+
+  function cleanupKeyHandler() {
+    if (window.__learnKeyHandler) {
+      document.removeEventListener("keydown", window.__learnKeyHandler);
+      window.__learnKeyHandler = null;
+    }
+  }
+
+  function advance() {
+    cleanupKeyHandler();
+    deps.renderAll();
+  }
 
   // --- Navigation
   appEl.querySelector("#backToCreate").addEventListener("click", () => {
@@ -51,12 +71,18 @@ export function renderLearn(appEl, state, current, deps) {
     deps.renderAll();
   });
 
+  nextBtn.addEventListener("click", () => {
+    // only advance once we've revealed / are ready
+    if (step === "ready") advance();
+  });
+
   const mcWrap = appEl.querySelector("#mcWrap");
   const buttons = Array.from(appEl.querySelectorAll(".mcOpt"));
 
-  // step: "answer" -> first click/keypress shows feedback
-  // step: "ready"  -> next click/keypress advances
+  // step: "answer" -> first click shows feedback
+  // step: "ready"  -> next click (or Next button) advances
   let step = "answer";
+  setNextEnabled(false);
 
   function revealCorrect() {
     buttons.forEach((b, i) => {
@@ -95,12 +121,8 @@ export function renderLearn(appEl, state, current, deps) {
     setTimeout(() => {
       revealCorrect();
       step = "ready";
+      setNextEnabled(true);
     }, 250);
-  }
-
-  function advance() {
-    cleanupKeyHandler();
-    deps.renderAll();
   }
 
   // Click behavior:
@@ -122,42 +144,28 @@ export function renderLearn(appEl, state, current, deps) {
 
   // --- Keyboard shortcuts: 1–4 select choices
   function onKeyDown(e) {
-    // Don't interfere with browser shortcuts
     if (e.metaKey || e.ctrlKey || e.altKey) return;
 
     const k = e.key;
 
-    // Only respond to 1-4 keys
-    if (k !== "1" && k !== "2" && k !== "3" && k !== "4") return;
-
-    e.preventDefault();
-
-    if (step === "ready") {
+    // If ready: any of 1-4 advances (keeps your existing behavior)
+    if (step === "ready" && (k === "1" || k === "2" || k === "3" || k === "4")) {
+      e.preventDefault();
       advance();
       return;
     }
 
     if (step !== "answer") return;
 
-    const idx = Number(k) - 1;
-    if (idx < buttons.length) answerWithIndex(idx);
-  }
-
-  // Prevent stacking key listeners across rerenders:
-  // store the active handler globally and replace it each time.
-  installKeyHandler(onKeyDown);
-
-  // ---------- helpers: global key handler mgmt ----------
-  function installKeyHandler(handler) {
-    cleanupKeyHandler();
-    window.__learnKeyHandler = handler;
-    document.addEventListener("keydown", handler);
-  }
-
-  function cleanupKeyHandler() {
-    if (window.__learnKeyHandler) {
-      document.removeEventListener("keydown", window.__learnKeyHandler);
-      window.__learnKeyHandler = null;
+    if (k === "1" || k === "2" || k === "3" || k === "4") {
+      e.preventDefault();
+      const idx = Number(k) - 1;
+      if (idx < buttons.length) answerWithIndex(idx);
     }
   }
+
+  // Prevent stacking key listeners across rerenders
+  cleanupKeyHandler();
+  window.__learnKeyHandler = onKeyDown;
+  document.addEventListener("keydown", onKeyDown);
 }
