@@ -39,7 +39,8 @@ export function renderRecall(appEl, state, current, deps) {
           : "#fecaca" // light red
         : "#ffffff";
 
-    const showCorrect = step === "result" && lastResult && !lastResult.isCorrect;
+    const showReview = step === "result" && lastResult; // show review block after submit
+    const showCorrectBlock = showReview && !lastResult.isCorrect; // only show correct answer when wrong
 
     appEl.innerHTML = `
       <section class="card">
@@ -58,13 +59,17 @@ export function renderRecall(appEl, state, current, deps) {
           ${frontHtml}
         </div>
 
+        <p class="help" style="text-align:left; margin-bottom:10px;">
+          Type the Correct Answer:
+        </p>
+
         <textarea
           id="recallInput"
           placeholder="Answer here..."
           style="
             width:100%;
             min-height:90px;
-            margin-top:8px;
+            margin-top:0px;
 
             /* Force the feedback color to show even if CSS tries to override */
             background:${inputBg} !important;
@@ -78,24 +83,43 @@ export function renderRecall(appEl, state, current, deps) {
         ></textarea>
 
         ${
-          showCorrect
+          showReview
             ? `
               <div style="margin-top:14px;">
-                <p class="help" style="text-align:left; margin-bottom:10px;">
-        Type the Correct Answer:
-      </p>
-                <div
-                  class="card"
-                  style="
-                    border-radius:10px;
-                    padding:12px;
-                    background:#bbf7d0;
-                  "
-                >
-                  <pre style="margin:0; white-space:pre-wrap; font-family:inherit;">${escapeHtml(
-                    lastResult.correctAnswer
-                  )}</pre>
-                </div>
+                ${
+                  showCorrectBlock
+                    ? `
+                      <p class="help" style="text-align:left; margin:0 0 6px;">
+                        <strong>Your Answer</strong>
+                      </p>
+                      <div class="card" style="border-radius:10px; padding:12px;">
+                        <pre style="margin:0; white-space:pre-wrap; font-family:inherit;">${escapeHtml(
+                          lastResult.userAnswer
+                        )}</pre>
+                      </div>
+
+                      <p class="help" style="text-align:left; margin:14px 0 6px;">
+                        <strong>Correct Answer</strong>
+                      </p>
+                      <div
+                        class="card"
+                        style="
+                          border-radius:10px;
+                          padding:12px;
+                          background:#bbf7d0;
+                        "
+                      >
+                        <pre style="margin:0; white-space:pre-wrap; font-family:inherit;">${escapeHtml(
+                          lastResult.correctAnswer
+                        )}</pre>
+                      </div>
+                    `
+                    : `
+                      <p class="help" style="text-align:left; margin:0;">
+                        <strong>Nice!</strong> Click Next to continue.
+                      </p>
+                    `
+                }
               </div>
             `
             : ""
@@ -136,7 +160,7 @@ export function renderRecall(appEl, state, current, deps) {
         const correctAnswer = String(current.back ?? "").trim();
         const isCorrect = normalize(userAnswer) === normalize(correctAnswer);
 
-        const c = state.cards.find(x => x.id === current.id);
+        const c = state.cards.find((x) => x.id === current.id);
         if (!c) return;
 
         applyStageRules(c, isCorrect);
