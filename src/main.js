@@ -1,4 +1,4 @@
-import { loadState, saveState, newState, resetAll } from "./state.js";
+import { loadStateForUser, saveStateForUser, newStateForUser, resetAllForUser } from "./state.js";
 import { renderProgressBar } from "./progress.js";
 import { renderCreateScreen } from "./create/create.js";
 import { renderStudyScreen } from "./study/study.js";
@@ -6,16 +6,31 @@ import { renderFeedback } from "./study/feedback.js";
 import { getCurrentUser, clearSession } from "./authStore.js";
 import { renderAuthScreen } from "./auth.js";
 
-let state = loadState() ?? newState();
+let state = null;
+let currentUserId = null;
 
 const appEl = document.getElementById("app");
 
+function loadUserState() {
+  const user = getCurrentUser();
+  if (!user) {
+    state = null;
+    currentUserId = null;
+    return;
+  }
+  
+  currentUserId = user.id;
+  state = loadStateForUser(currentUserId) ?? newStateForUser();
+}
+
 function setScreen(screen) {
+  if (!state) return;
   state.screen = screen;
 }
 
 function save() {
-  saveState(state);
+  if (!state || !currentUserId) return;
+  saveStateForUser(currentUserId, state);
 }
 
 function setStateAndRender(nextState) {
@@ -68,10 +83,24 @@ function renderAll() {
       existingLogout.remove();
     }
     
+    state = null;
+    currentUserId = null;
+    
     renderAuthScreen(appEl, () => {
+      loadUserState();
       renderAll();
     });
     return;
+  }
+  
+  // Check if user changed (switched accounts)
+  if (currentUser.id !== currentUserId) {
+    loadUserState();
+  }
+  
+  // Ensure state is loaded
+  if (!state) {
+    loadUserState();
   }
   
   // User is logged in - show app and logout button
@@ -82,7 +111,7 @@ function renderAll() {
       save,
       setScreen,
       renderAll,
-      resetAll: () => resetAll(setStateAndRender),
+      resetAll: () => resetAllForUser(currentUserId, setStateAndRender),
     });
   } else {
     renderStudyScreen(appEl, state, {
@@ -95,4 +124,6 @@ function renderAll() {
   }
 }
 
+// Initialize on load
+loadUserState();
 renderAll();
