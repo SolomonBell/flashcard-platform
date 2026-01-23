@@ -69,8 +69,8 @@ function renderNavigation(currentUser) {
   navContainer.id = "navButtons";
   navContainer.style.cssText = "margin-top:12px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap;";
   
-  // Add Classes button for teachers only
-  if (currentUser && currentUser.role === "teacher") {
+  // Add Classes button for teachers and students
+  if (currentUser) {
     const classesBtn = document.createElement("button");
     classesBtn.textContent = "Classes";
     classesBtn.className = "small";
@@ -147,7 +147,10 @@ function renderAll() {
     });
   } else if (state.screen === "classes") {
     renderClassesScreen(appEl, {
+      currentUser,
+      state,
       setScreen,
+      save,
       renderAll,
     });
   } else {
