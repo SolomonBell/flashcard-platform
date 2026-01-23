@@ -3,6 +3,7 @@ import { renderProgressBar } from "./progress.js";
 import { renderCreateScreen } from "./create/create.js";
 import { renderStudyScreen } from "./study/study.js";
 import { renderFeedback } from "./study/feedback.js";
+import { renderClassesScreen } from "./classes/classes.js";
 import { getCurrentUser, clearSession } from "./authStore.js";
 import { renderAuthScreen } from "./auth.js";
 
@@ -49,27 +50,54 @@ function feedback(payload) {
   });
 }
 
-function renderLogoutButton() {
+function renderNavigation(currentUser) {
   const header = document.querySelector(".header");
   if (!header) return;
   
-  // Remove existing logout button if present
+  // Remove existing navigation elements if present
   const existingLogout = header.querySelector("#logoutBtn");
   if (existingLogout) {
     existingLogout.remove();
   }
+  const existingNav = header.querySelector("#navButtons");
+  if (existingNav) {
+    existingNav.remove();
+  }
   
+  // Create navigation container
+  const navContainer = document.createElement("div");
+  navContainer.id = "navButtons";
+  navContainer.style.cssText = "margin-top:12px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap;";
+  
+  // Add Classes button for teachers only
+  if (currentUser && currentUser.role === "teacher") {
+    const classesBtn = document.createElement("button");
+    classesBtn.textContent = "Classes";
+    classesBtn.className = "small";
+    classesBtn.style.cssText = "padding:6px 10px; font-size:12px;";
+    classesBtn.addEventListener("click", () => {
+      if (state) {
+        setScreen("classes");
+        save();
+        renderAll();
+      }
+    });
+    navContainer.appendChild(classesBtn);
+  }
+  
+  // Add logout button
   const logoutBtn = document.createElement("button");
   logoutBtn.id = "logoutBtn";
   logoutBtn.textContent = "Log out";
   logoutBtn.className = "small";
-  logoutBtn.style.cssText = "margin-top:8px; padding:6px 10px; font-size:12px;";
+  logoutBtn.style.cssText = "padding:6px 10px; font-size:12px;";
   logoutBtn.addEventListener("click", () => {
     clearSession();
     renderAll();
   });
+  navContainer.appendChild(logoutBtn);
   
-  header.appendChild(logoutBtn);
+  header.appendChild(navContainer);
 }
 
 function renderAll() {
@@ -77,10 +105,14 @@ function renderAll() {
   
   // If not logged in, show auth screen
   if (!currentUser) {
-    // Remove logout button if present
+    // Remove navigation elements if present
     const existingLogout = document.querySelector("#logoutBtn");
     if (existingLogout) {
       existingLogout.remove();
+    }
+    const existingNav = document.querySelector("#navButtons");
+    if (existingNav) {
+      existingNav.remove();
     }
     
     state = null;
@@ -103,8 +135,8 @@ function renderAll() {
     loadUserState();
   }
   
-  // User is logged in - show app and logout button
-  renderLogoutButton();
+  // User is logged in - show navigation
+  renderNavigation(currentUser);
   
   if (state.screen === "create") {
     renderCreateScreen(appEl, state, {
@@ -112,6 +144,11 @@ function renderAll() {
       setScreen,
       renderAll,
       resetAll: () => resetAllForUser(currentUserId, setStateAndRender),
+    });
+  } else if (state.screen === "classes") {
+    renderClassesScreen(appEl, {
+      setScreen,
+      renderAll,
     });
   } else {
     renderStudyScreen(appEl, state, {

@@ -71,7 +71,7 @@ export function saveStateForUser(userId, state) {
 
 export function newStateForUser() {
   return {
-    screen: "create", // "create" | "study"
+    screen: "create", // "create" | "study" | "classes"
     cards: [],
   };
 }
