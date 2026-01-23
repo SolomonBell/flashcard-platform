@@ -153,6 +153,64 @@ function renderAll() {
       save,
       renderAll,
     });
+  } else if (state.screen === "sharedStudy") {
+    // Handle shared deck study
+    import("./classes/sharedDecksStore.js").then(({ getSharedDeckById, getSharedDeckProgress, saveSharedDeckProgress }) => {
+      const sharedDeck = getSharedDeckById(state.sharedDeckId);
+      if (!sharedDeck) {
+        // Shared deck not found, go back to classes
+        state.sharedDeckId = null;
+        state.screen = "classes";
+        save();
+        renderAll();
+        return;
+      }
+
+      // Load or create student progress
+      let progress = getSharedDeckProgress(state.sharedDeckId, currentUser.id);
+      if (!progress) {
+        // Create initial progress from shared deck snapshot
+        const initialCards = sharedDeck.deckSnapshot.cards.map(c => ({
+          ...c,
+          stage: 1,
+          stage3Mastered: false,
+          lastSeenAt: null,
+        }));
+        saveSharedDeckProgress(state.sharedDeckId, currentUser.id, initialCards);
+        progress = { cards: initialCards };
+      }
+
+      // Create a temporary in-memory state for studying shared deck
+      const sharedState = {
+        screen: "sharedStudy",
+        cards: progress.cards,
+        sharedDeckId: state.sharedDeckId,
+      };
+
+      // Custom save function for shared deck progress
+      const sharedSave = () => {
+        saveSharedDeckProgress(state.sharedDeckId, currentUser.id, sharedState.cards);
+      };
+
+      // Custom setScreen that handles going back to classes
+      const sharedSetScreen = (screen) => {
+        if (screen === "create" || screen === "classes") {
+          state.sharedDeckId = null;
+          state.screen = "classes";
+        } else {
+          state.screen = screen;
+        }
+        save();
+      };
+
+      renderStudyScreen(appEl, sharedState, {
+        renderProgressBar,
+        save: sharedSave,
+        setScreen: sharedSetScreen,
+        renderAll,
+        feedback,
+      });
+    });
   } else {
     renderStudyScreen(appEl, state, {
       renderProgressBar,

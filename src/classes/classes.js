@@ -12,6 +12,13 @@ import {
   validateEmailDomain,
 } from "./classesStore.js";
 import { getUserByEmail, loadUsers } from "../authStore.js";
+import {
+  getSharedDecksByClass,
+  shareDeckToClass,
+  deleteSharedDeck,
+  getSharedDecksForStudent,
+} from "./sharedDecksStore.js";
+import { loadStateForUser } from "../state.js";
 
 export function renderClassesScreen(appEl, { currentUser, state, setScreen, save, renderAll }) {
   const classView = state.classView || "home";
@@ -31,6 +38,9 @@ function renderClassesHome(appEl, { currentUser, state, setScreen, save, renderA
   const classes = isTeacher
     ? getClassesByTeacher(currentUser.id)
     : getClassesByStudent(currentUser.id);
+  
+  // For students, show class decks
+  const sharedDecks = isTeacher ? [] : getSharedDecksForStudent(currentUser.id);
 
   appEl.innerHTML = `
     <section class="card">
@@ -40,6 +50,27 @@ function renderClassesHome(appEl, { currentUser, state, setScreen, save, renderA
         <div class="btns" style="margin-top:16px; justify-content:center;">
           <button class="primary" id="createClassBtn">Create Class</button>
         </div>
+      ` : ""}
+      
+      ${!isTeacher && sharedDecks.length > 0 ? `
+        <hr style="margin-top:16px;" />
+        <h3 style="font-size:16px; margin-top:16px; margin-bottom:8px;">Class Decks</h3>
+        <div style="margin-top:8px;">
+          ${sharedDecks.map(sharedDeck => `
+            <div class="cardRow" style="margin-top:${sharedDecks.indexOf(sharedDeck) === 0 ? '0' : '8px'};">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                  <strong>${escapeHtml(sharedDeck.deckSnapshot.deckName)}</strong>
+                  <div class="small" style="margin-top:4px;">
+                    ${sharedDeck.deckSnapshot.cards.length} cards
+                  </div>
+                </div>
+                <button class="primary" data-shared-deck-id="${sharedDeck.id}">Study</button>
+              </div>
+            </div>
+          `).join("")}
+        </div>
+        <hr style="margin-top:16px;" />
       ` : ""}
       
       ${classes.length === 0 ? `
@@ -71,6 +102,19 @@ function renderClassesHome(appEl, { currentUser, state, setScreen, save, renderA
       </div>
     </section>
   `;
+
+  // Handle shared deck study for students
+  if (!isTeacher) {
+    appEl.querySelectorAll("button[data-shared-deck-id]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const sharedDeckId = btn.getAttribute("data-shared-deck-id");
+        state.sharedDeckId = sharedDeckId;
+        state.screen = "sharedStudy";
+        save();
+        renderAll();
+      });
+    });
+  }
 
   if (isTeacher) {
     appEl.querySelector("#createClassBtn")?.addEventListener("click", () => {
@@ -188,6 +232,16 @@ function renderClassDetail(appEl, { currentUser, classId, state, setScreen, save
     const enrolledStudents = classObj.studentIds
       .map(id => allUsers.find(u => u.id === id))
       .filter(Boolean);
+    
+    // Get shared decks for this class (teacher only)
+    const sharedDecks = isTeacher ? getSharedDecksByClass(classId) : [];
+    
+    // Get teacher's decks for sharing
+    const teacherState = isTeacher ? loadStateForUser(currentUser.id) : null;
+    const teacherDecks = teacherState && teacherState.cards && teacherState.cards.length > 0
+      ? teacherState.cards.filter(c => c.front.trim() && c.back.trim())
+      : [];
+    
     appEl.innerHTML = `
       <section class="card">
         <h2 style="margin:0; text-align:center;">${escapeHtml(classObj.name)}</h2>
@@ -203,6 +257,48 @@ function renderClassDetail(appEl, { currentUser, classId, state, setScreen, save
         `}
         
         ${isTeacher ? `
+          <hr style="margin-top:16px;" />
+          
+          <h3 style="font-size:16px; margin-top:16px; margin-bottom:8px;">Shared Decks</h3>
+          ${sharedDecks.length === 0 ? `
+            <p class="small" style="margin-top:8px;">No decks shared yet.</p>
+          ` : `
+            <div style="margin-top:8px;">
+              ${sharedDecks.map(sharedDeck => `
+                <div class="cardRow" style="margin-top:${sharedDecks.indexOf(sharedDeck) === 0 ? '0' : '8px'};">
+                  <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                      <strong>${escapeHtml(sharedDeck.deckSnapshot.deckName)}</strong>
+                      <div class="small" style="margin-top:4px;">
+                        ${sharedDeck.deckSnapshot.cards.length} cards
+                      </div>
+                    </div>
+                    <button class="danger" data-remove-shared-deck="${sharedDeck.id}">Remove</button>
+                  </div>
+                </div>
+              `).join("")}
+            </div>
+          `}
+          
+          <hr style="margin-top:16px;" />
+          
+          <h3 style="font-size:16px; margin-top:16px; margin-bottom:8px;">Share a deck to this class</h3>
+          ${teacherDecks.length === 0 ? `
+            <p class="small" style="margin-top:8px;">Create a deck first, then come back to share it.</p>
+          ` : `
+            <form id="shareDeckForm" style="margin-top:8px;">
+              <label class="label" for="deckSelect">Select Deck</label>
+              <select id="deckSelect" required style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:10px; font-size:14px; margin-bottom:8px;">
+                <option value="">Choose a deck...</option>
+                ${teacherDecks.map((card, idx) => {
+                  const deckName = `Deck ${idx + 1} (${teacherState.cards.filter(c => c.front.trim() && c.back.trim()).length} cards)`;
+                  return `<option value="${idx}">${escapeHtml(deckName)}</option>`;
+                }).join("")}
+              </select>
+              <button type="submit" class="primary">Share</button>
+            </form>
+          `}
+          
           <hr style="margin-top:16px;" />
           
           <h3 style="font-size:16px; margin-top:16px; margin-bottom:8px;">Add Student</h3>
@@ -345,6 +441,51 @@ function renderClassDetail(appEl, { currentUser, classId, state, setScreen, save
           render();
         });
       });
+      
+      // Handle shared deck removal
+      appEl.querySelectorAll("button[data-remove-shared-deck]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const sharedDeckId = btn.getAttribute("data-remove-shared-deck");
+          if (confirm("Remove this shared deck? Students will no longer be able to access it.")) {
+            deleteSharedDeck(sharedDeckId);
+            render();
+          }
+        });
+      });
+      
+      // Handle deck sharing
+      const shareForm = appEl.querySelector("#shareDeckForm");
+      if (shareForm) {
+        shareForm.addEventListener("submit", (e) => {
+          e.preventDefault();
+          const deckIndex = parseInt(shareForm.deckSelect.value, 10);
+          if (isNaN(deckIndex) || !teacherState || !teacherState.cards) {
+            return;
+          }
+          
+          const validCards = teacherState.cards.filter(c => c.front.trim() && c.back.trim());
+          if (validCards.length === 0) {
+            alert("Please create a deck with at least one card first.");
+            return;
+          }
+          
+          const deckSnapshot = {
+            cards: validCards.map(c => ({
+              ...c,
+              front: c.front.trim(),
+              back: c.back.trim(),
+              stage: 1,
+              stage3Mastered: false,
+              lastSeenAt: null,
+            })),
+            deckName: `Deck with ${validCards.length} cards`,
+          };
+          
+          shareDeckToClass(currentUser.id, classId, deckSnapshot);
+          shareForm.deckSelect.value = "";
+          render();
+        });
+      }
     }
 
     appEl.querySelector("#backToClasses")?.addEventListener("click", () => {
