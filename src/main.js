@@ -6,6 +6,7 @@ import { renderFeedback } from "./study/feedback.js";
 import { renderClassesScreen } from "./classes/classes.js";
 import { getCurrentUser, clearSession } from "./authStore.js";
 import { renderAuthScreen } from "./auth.js";
+import { startSession, endSession, recordAnswer, updateStageSnapshot } from "./analytics/analyticsStore.js";
 
 let state = null;
 let currentUserId = null;
@@ -41,12 +42,21 @@ function setStateAndRender(nextState) {
 }
 
 function feedback(payload) {
+  // Record answer in analytics
+  recordAnswer({ isCorrect: payload.correct });
+  
   renderFeedback(appEl, state, payload, {
     renderProgressBar,
     save,
     setScreen,
     renderAll,
-    next: () => renderAll(),
+    next: () => {
+      // Update stage snapshot after answer
+      if (state && state.cards) {
+        updateStageSnapshot({ cards: state.cards });
+      }
+      renderAll();
+    },
   });
 }
 
@@ -100,11 +110,16 @@ function renderNavigation(currentUser) {
   header.appendChild(navContainer);
 }
 
+let previousScreen = null;
+
 function renderAll() {
   const currentUser = getCurrentUser();
   
   // If not logged in, show auth screen
   if (!currentUser) {
+    // End any active session
+    endSession();
+    
     // Remove navigation elements if present
     const existingLogout = document.querySelector("#logoutBtn");
     if (existingLogout) {
@@ -117,6 +132,7 @@ function renderAll() {
     
     state = null;
     currentUserId = null;
+    previousScreen = null;
     
     renderAuthScreen(appEl, () => {
       loadUserState();
@@ -127,12 +143,47 @@ function renderAll() {
   
   // Check if user changed (switched accounts)
   if (currentUser.id !== currentUserId) {
+    // End session for previous user
+    endSession();
     loadUserState();
+    previousScreen = null;
   }
   
   // Ensure state is loaded
   if (!state) {
     loadUserState();
+  }
+  
+  // Handle session lifecycle: end session when leaving study screens
+  if (previousScreen === "study" || previousScreen === "sharedStudy") {
+    if (state.screen !== "study" && state.screen !== "sharedStudy") {
+      endSession();
+    }
+  }
+  
+  // Start session when entering study screens
+  if ((state.screen === "study" || state.screen === "sharedStudy") && 
+      previousScreen !== "study" && previousScreen !== "sharedStudy") {
+    if (state.screen === "study") {
+      // Personal deck
+      startSession({
+        userId: currentUser.id,
+        deckContext: "personal",
+        deckId: state.deckId || `deck_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      });
+      // Ensure deckId is saved
+      if (!state.deckId) {
+        state.deckId = `deck_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        save();
+      }
+    } else if (state.screen === "sharedStudy") {
+      // Shared deck
+      startSession({
+        userId: currentUser.id,
+        deckContext: "shared",
+        deckId: state.sharedDeckId,
+      });
+    }
   }
   
   // User is logged in - show navigation
@@ -190,6 +241,8 @@ function renderAll() {
       // Custom save function for shared deck progress
       const sharedSave = () => {
         saveSharedDeckProgress(state.sharedDeckId, currentUser.id, sharedState.cards);
+        // Update stage snapshot after save
+        updateStageSnapshot({ cards: sharedState.cards });
       };
 
       // Custom setScreen that handles going back to classes
@@ -203,23 +256,49 @@ function renderAll() {
         save();
       };
 
+      // Custom feedback wrapper for shared study
+      const sharedFeedback = (payload) => {
+        recordAnswer({ isCorrect: payload.correct });
+        renderFeedback(appEl, sharedState, payload, {
+          renderProgressBar,
+          save: sharedSave,
+          setScreen: sharedSetScreen,
+          renderAll,
+          next: () => {
+            updateStageSnapshot({ cards: sharedState.cards });
+            renderAll();
+          },
+        });
+      };
+
       renderStudyScreen(appEl, sharedState, {
         renderProgressBar,
         save: sharedSave,
         setScreen: sharedSetScreen,
         renderAll,
-        feedback,
+        feedback: sharedFeedback,
       });
     });
-  } else {
+  } else if (state.screen === "study") {
+    // Wrap save to update stage snapshot
+    const studySave = () => {
+      save();
+      if (state && state.cards) {
+        updateStageSnapshot({ cards: state.cards });
+      }
+    };
+    
     renderStudyScreen(appEl, state, {
       renderProgressBar,
-      save,
+      save: studySave,
       setScreen,
       renderAll,
       feedback,
     });
   }
+  
+  // Update previous screen for next render
+  previousScreen = state.screen;
 }
 
 // Initialize on load

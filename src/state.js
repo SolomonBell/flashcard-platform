@@ -57,6 +57,11 @@ export function loadStateForUser(userId) {
       }));
     }
 
+    // Migration: ensure deckId exists for analytics
+    if (!parsed.deckId) {
+      parsed.deckId = `deck_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+
     return parsed;
   } catch {
     return null;
@@ -73,6 +78,7 @@ export function newStateForUser() {
   return {
     screen: "create", // "create" | "study" | "classes" | "sharedStudy"
     cards: [],
+    deckId: `deck_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, // Stable ID for analytics
   };
 }
 
