@@ -19,6 +19,8 @@ import {
   getSharedDecksForStudent,
 } from "./sharedDecksStore.js";
 import { loadStateForUser } from "../state.js";
+import { getAllAnalytics } from "../analytics/analyticsStore.js";
+import { getAllSharedProgress } from "./sharedDecksStore.js";
 
 export function renderClassesScreen(appEl, { currentUser, state, setScreen, save, renderAll }) {
   const classView = state.classView || "home";
@@ -232,33 +234,87 @@ function renderClassDetail(appEl, { currentUser, classId, state, setScreen, save
     const enrolledStudents = classObj.studentIds
       .map(id => allUsers.find(u => u.id === id))
       .filter(Boolean);
-    
-    // Get shared decks for this class (teacher only)
-    const sharedDecks = isTeacher ? getSharedDecksByClass(classId) : [];
-    
-    // Get teacher's decks for sharing
+
+    const sharedDecks = getSharedDecksByClass(classId);
     const teacherState = isTeacher ? loadStateForUser(currentUser.id) : null;
     const teacherDecks = teacherState && teacherState.cards && teacherState.cards.length > 0
       ? teacherState.cards.filter(c => c.front.trim() && c.back.trim())
       : [];
-    
-    appEl.innerHTML = `
-      <section class="card">
-        <h2 style="margin:0; text-align:center;">${escapeHtml(classObj.name)}</h2>
-        
-        ${classObj.allowedDomains && classObj.allowedDomains.length > 0 ? `
-          <p class="sub" style="text-align:center; margin-top:8px;">
-            Allowed domains: ${escapeHtml(classObj.allowedDomains.join(", "))}
-          </p>
-        ` : `
-          <p class="sub" style="text-align:center; margin-top:8px;">
-            All email domains allowed
-          </p>
-        `}
-        
+
+    const tab = state.classDetailTab || "roster";
+    const analytics = getAllAnalytics();
+    const sharedProgress = getAllSharedProgress();
+
+    function getAggregate(userId, deckId) {
+      return analytics.aggregates?.[userId]?.[deckId] || null;
+    }
+
+    function getProgress(userId, deckId) {
+      return (sharedProgress || []).find(p => p.sharedDeckId === deckId && p.studentId === userId) || null;
+    }
+
+    const sharedDeckIds = sharedDecks.map(d => d.id);
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+
+    function formatMinutes(ms = 0) {
+      return ((ms || 0) / 60000).toFixed(1);
+    }
+
+    function renderRosterSection() {
+      return `
         ${isTeacher ? `
+          <h3 style="font-size:16px; margin-top:16px; margin-bottom:8px;">Add Student</h3>
+          ${errorMessage ? `
+            <div style="color:#dc2626; font-size:13px; margin-top:8px; padding:8px; background:#fff1f2; border:1px solid #fecdd3; border-radius:8px;">
+              ${errorMessage}
+            </div>
+          ` : ""}
+          <form id="addStudentForm" style="margin-top:8px;">
+            <div style="display:flex; gap:8px;">
+              <input type="email" id="studentEmail" name="studentEmail" placeholder="student@example.com" required style="flex:1;" />
+              <button type="submit" class="primary">Add</button>
+            </div>
+          </form>
           <hr style="margin-top:16px;" />
-          
+        ` : ""}
+        <h3 style="font-size:16px; margin-top:16px; margin-bottom:8px;">Enrolled Students</h3>
+        ${enrolledStudents.length === 0 ? `
+          <p class="small" style="margin-top:8px;">No enrolled students yet.</p>
+        ` : `
+          <div style="margin-top:8px;">
+            ${enrolledStudents.map(s => `
+              <div class="cardRow" style="margin-top:${enrolledStudents.indexOf(s) === 0 ? '0' : '8px'};">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <span>${escapeHtml(s.email)}</span>
+                  ${isTeacher ? `<button class="danger" data-remove-student-id="${s.id}">Remove</button>` : ""}
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        `}
+        ${isTeacher ? `
+          <h3 style="font-size:16px; margin-top:16px; margin-bottom:8px;">Invited Emails</h3>
+          ${classObj.invitedEmails.length === 0 ? `
+            <p class="small" style="margin-top:8px;">No pending invitations.</p>
+          ` : `
+            <div style="margin-top:8px;">
+              ${classObj.invitedEmails.map(email => `
+                <div class="cardRow" style="margin-top:${classObj.invitedEmails.indexOf(email) === 0 ? '0' : '8px'};">
+                  <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>${escapeHtml(email)}</span>
+                    <button class="danger" data-remove-email="${escapeHtml(email)}">Remove</button>
+                  </div>
+                </div>
+              `).join("")}
+            </div>
+          `}
+        ` : ""}
+      `;
+    }
+
+    function renderSharedSection() {
+      return `
+        ${isTeacher ? `
           <h3 style="font-size:16px; margin-top:16px; margin-bottom:8px;">Shared Decks</h3>
           ${sharedDecks.length === 0 ? `
             <p class="small" style="margin-top:8px;">No decks shared yet.</p>
@@ -279,9 +335,7 @@ function renderClassDetail(appEl, { currentUser, classId, state, setScreen, save
               `).join("")}
             </div>
           `}
-          
           <hr style="margin-top:16px;" />
-          
           <h3 style="font-size:16px; margin-top:16px; margin-bottom:8px;">Share a deck to this class</h3>
           ${teacherDecks.length === 0 ? `
             <p class="small" style="margin-top:8px;">Create a deck first, then come back to share it.</p>
@@ -298,79 +352,303 @@ function renderClassDetail(appEl, { currentUser, classId, state, setScreen, save
               <button type="submit" class="primary">Share</button>
             </form>
           `}
-          
-          <hr style="margin-top:16px;" />
-          
-          <h3 style="font-size:16px; margin-top:16px; margin-bottom:8px;">Add Student</h3>
-          
-          ${errorMessage ? `
-            <div style="color:#dc2626; font-size:13px; margin-top:8px; padding:8px; background:#fff1f2; border:1px solid #fecdd3; border-radius:8px;">
-              ${errorMessage}
-            </div>
-          ` : ""}
-          
-          <form id="addStudentForm" style="margin-top:8px;">
-            <div style="display:flex; gap:8px;">
-              <input type="email" id="studentEmail" name="studentEmail" placeholder="student@example.com" required style="flex:1;" />
-              <button type="submit" class="primary">Add</button>
-            </div>
-          </form>
-          
-          <hr style="margin-top:16px;" />
-          
-          <h3 style="font-size:16px; margin-top:16px; margin-bottom:8px;">Enrolled Students</h3>
-          ${enrolledStudents.length === 0 ? `
-            <p class="small" style="margin-top:8px;">No enrolled students yet.</p>
-          ` : `
-            <div style="margin-top:8px;">
-              ${enrolledStudents.map(s => `
-                <div class="cardRow" style="margin-top:${enrolledStudents.indexOf(s) === 0 ? '0' : '8px'};">
-                  <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <span>${escapeHtml(s.email)}</span>
-                    <button class="danger" data-remove-student-id="${s.id}">Remove</button>
-                  </div>
-                </div>
-              `).join("")}
-            </div>
-          `}
-          
-          <h3 style="font-size:16px; margin-top:16px; margin-bottom:8px;">Invited Emails</h3>
-          ${classObj.invitedEmails.length === 0 ? `
-            <p class="small" style="margin-top:8px;">No pending invitations.</p>
-          ` : `
-            <div style="margin-top:8px;">
-              ${classObj.invitedEmails.map(email => `
-                <div class="cardRow" style="margin-top:${classObj.invitedEmails.indexOf(email) === 0 ? '0' : '8px'};">
-                  <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <span>${escapeHtml(email)}</span>
-                    <button class="danger" data-remove-email="${escapeHtml(email)}">Remove</button>
-                  </div>
-                </div>
-              `).join("")}
-            </div>
-          `}
         ` : `
-          <hr style="margin-top:16px;" />
-          
-          <h3 style="font-size:16px; margin-top:16px; margin-bottom:8px;">Enrolled Students</h3>
-          ${enrolledStudents.length === 0 ? `
-            <p class="small" style="margin-top:8px;">No enrolled students yet.</p>
-          ` : `
-            <div style="margin-top:8px;">
-              ${enrolledStudents.map(s => `
-                <div class="cardRow" style="margin-top:${enrolledStudents.indexOf(s) === 0 ? '0' : '8px'};">
-                  <span>${escapeHtml(s.email)}</span>
+          <p class="small" style="margin-top:8px;">Shared decks are managed by the teacher.</p>
+        `}
+      `;
+    }
+
+    function computeStatus(counts) {
+      const total = counts.total || 0;
+      if (!total) return "Not started";
+      const pct3 = ((counts.s3 + counts.s3m) / Math.max(1, total)) * 100;
+      if (pct3 >= 90) return "Completed";
+      return "In progress";
+    }
+
+    function renderAnalyticsSection() {
+      if (!isTeacher) return `<p class="small" style="margin-top:8px;">Analytics available to teachers only.</p>`;
+
+      const aggregates = analytics.aggregates || {};
+      const sessions = analytics.sessions || [];
+      const totalStudents = enrolledStudents.length;
+      const activeStudentIds = new Set(
+        sessions
+          .filter(s => s.deckContext === "shared" && sharedDeckIds.includes(s.deckId) && s.endedAt && s.endedAt >= sevenDaysAgo && classObj.studentIds.includes(s.userId))
+          .map(s => s.userId)
+      );
+      const activeStudents = activeStudentIds.size;
+
+      let totalTimeMs = 0;
+      let totalStageCards = 0;
+      let stage2Plus = 0;
+      let stage3 = 0;
+      let mastered = 0;
+      let notStarted = 0;
+      let inProgress = 0;
+      let completed = 0;
+
+      enrolledStudents.forEach(student => {
+        sharedDeckIds.forEach(deckId => {
+          const agg = getAggregate(student.id, deckId);
+          if (agg) totalTimeMs += agg.totalTimeMs || 0;
+          const prog = getProgress(student.id, deckId);
+          let counts = null;
+          if (prog?.cards?.length) {
+            counts = {
+              s1: prog.cards.filter(c => c.stage === 1).length,
+              s2: prog.cards.filter(c => c.stage === 2).length,
+              s3: prog.cards.filter(c => c.stage === 3 && !c.stage3Mastered).length,
+              s3m: prog.cards.filter(c => c.stage === 3 && c.stage3Mastered).length,
+            };
+            counts.total = prog.cards.length;
+          } else if (agg?.latestStageDistribution) {
+            const dist = agg.latestStageDistribution;
+            counts = {
+              s1: dist.stage1Count,
+              s2: dist.stage2Count,
+              s3: dist.stage3Count,
+              s3m: dist.stage3MasteredCount,
+              total: dist.stage1Count + dist.stage2Count + dist.stage3Count + dist.stage3MasteredCount,
+            };
+          }
+          if (counts) {
+            totalStageCards += counts.total;
+            stage2Plus += counts.s2 + counts.s3 + counts.s3m;
+            stage3 += counts.s3 + counts.s3m;
+            mastered += counts.s3m;
+            const status = computeStatus(counts);
+            if (status === "Completed") completed += 1;
+            else inProgress += 1;
+          } else {
+            notStarted += 1;
+          }
+        });
+      });
+
+      const avgTimeMinutes = totalStudents > 0 ? (totalTimeMs / totalStudents) / 60000 : 0;
+      const pctStage2Plus = totalStageCards > 0 ? (stage2Plus / totalStageCards) * 100 : 0;
+      const pctStage3 = totalStageCards > 0 ? (stage3 / totalStageCards) * 100 : 0;
+      const pctMastered = totalStageCards > 0 ? (mastered / totalStageCards) * 100 : 0;
+
+      const selectedDeckId = state.classAnalyticsDeckId && sharedDeckIds.includes(state.classAnalyticsDeckId)
+        ? state.classAnalyticsDeckId
+        : (sharedDeckIds[0] || null);
+
+      function renderDeckAnalytics() {
+        if (!selectedDeckId) return `<p class="small" style="margin-top:8px;">No shared decks yet.</p>`;
+        const studentsCount = enrolledStudents.length || 1;
+        let deckTimeMs = 0;
+        let totals = { s1: 0, s2: 0, s3: 0, s3m: 0, total: 0 };
+        const rows = enrolledStudents.map(student => {
+          const agg = getAggregate(student.id, selectedDeckId);
+          deckTimeMs += agg?.totalTimeMs || 0;
+          const prog = getProgress(student.id, selectedDeckId);
+          let counts = { s1: 0, s2: 0, s3: 0, s3m: 0, total: 0 };
+          if (prog?.cards?.length) {
+            counts = {
+              s1: prog.cards.filter(c => c.stage === 1).length,
+              s2: prog.cards.filter(c => c.stage === 2).length,
+              s3: prog.cards.filter(c => c.stage === 3 && !c.stage3Mastered).length,
+              s3m: prog.cards.filter(c => c.stage === 3 && c.stage3Mastered).length,
+              total: prog.cards.length,
+            };
+          } else if (agg?.latestStageDistribution) {
+            const dist = agg.latestStageDistribution;
+            counts = {
+              s1: dist.stage1Count,
+              s2: dist.stage2Count,
+              s3: dist.stage3Count,
+              s3m: dist.stage3MasteredCount,
+              total: dist.stage1Count + dist.stage2Count + dist.stage3Count + dist.stage3MasteredCount,
+            };
+          }
+          totals.s1 += counts.s1;
+          totals.s2 += counts.s2;
+          totals.s3 += counts.s3;
+          totals.s3m += counts.s3m;
+          totals.total += counts.total;
+          const total = counts.total || 1;
+          const pct2plus = ((counts.s2 + counts.s3 + counts.s3m) / total) * 100;
+          const pct3 = ((counts.s3 + counts.s3m) / total) * 100;
+          const lastStudied = agg?.lastStudiedAt ? new Date(agg.lastStudiedAt).toLocaleDateString() : "—";
+          const status = computeStatus(counts);
+          return `
+            <div class="cardRow" style="margin-top:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                  <strong>${escapeHtml(student.email)}</strong>
+                  <div class="small" style="margin-top:4px;">Last studied: ${lastStudied}</div>
                 </div>
-              `).join("")}
+                <div class="small" style="text-align:right;">
+                  Time: ${formatMinutes(agg?.totalTimeMs)} min<br/>
+                  Stage2+: ${pct2plus.toFixed(0)}%<br/>
+                  Stage3: ${pct3.toFixed(0)}%<br/>
+                  Status: ${status}
+                </div>
+              </div>
             </div>
-          `}
+          `;
+        }).join("");
+
+        const avgDeckTime = (deckTimeMs / studentsCount) / 60000;
+        const total = totals.total || 1;
+        const deckStage2plusPct = ((totals.s2 + totals.s3 + totals.s3m) / total) * 100;
+        const deckStage3Pct = ((totals.s3 + totals.s3m) / total) * 100;
+        const deckMasteredPct = (totals.s3m / total) * 100;
+
+        return `
+          <label class="label" for="deckAnalyticsSelect" style="margin-top:12px;">Select Deck</label>
+          <select id="deckAnalyticsSelect" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:10px; font-size:14px; margin-bottom:12px;">
+            ${sharedDecks.map(d => `
+              <option value="${d.id}" ${d.id === selectedDeckId ? "selected" : ""}>${escapeHtml(d.deckSnapshot.deckName)}</option>
+            `).join("")}
+          </select>
+          <div class="deckStats" style="margin-top:8px;">
+            <div><strong>Avg time:</strong> ${avgDeckTime.toFixed(1)} min</div>
+            <div><strong>Stage2+:</strong> ${deckStage2plusPct.toFixed(0)}%</div>
+            <div><strong>Stage3:</strong> ${deckStage3Pct.toFixed(0)}%</div>
+            <div><strong>Mastered:</strong> ${deckMasteredPct.toFixed(0)}%</div>
+          </div>
+          <div style="margin-top:12px;">${rows || `<p class="small">No data yet.</p>`}</div>
+        `;
+      }
+
+      const selectedStudentId = state.classAnalyticsStudentId && classObj.studentIds.includes(state.classAnalyticsStudentId)
+        ? state.classAnalyticsStudentId
+        : (enrolledStudents[0]?.id || null);
+
+      function renderStudentAnalytics() {
+        if (!selectedStudentId) return `<p class="small" style="margin-top:8px;">No students enrolled.</p>`;
+        const student = enrolledStudents.find(s => s.id === selectedStudentId);
+        let totalTimeMsStudent = 0;
+        const rows = sharedDecks.map(deck => {
+          const agg = getAggregate(student.id, deck.id);
+          totalTimeMsStudent += agg?.totalTimeMs || 0;
+          const prog = getProgress(student.id, deck.id);
+          let counts = { s1: 0, s2: 0, s3: 0, s3m: 0, total: 0 };
+          if (prog?.cards?.length) {
+            counts = {
+              s1: prog.cards.filter(c => c.stage === 1).length,
+              s2: prog.cards.filter(c => c.stage === 2).length,
+              s3: prog.cards.filter(c => c.stage === 3 && !c.stage3Mastered).length,
+              s3m: prog.cards.filter(c => c.stage === 3 && c.stage3Mastered).length,
+              total: prog.cards.length,
+            };
+          } else if (agg?.latestStageDistribution) {
+            const dist = agg.latestStageDistribution;
+            counts = {
+              s1: dist.stage1Count,
+              s2: dist.stage2Count,
+              s3: dist.stage3Count,
+              s3m: dist.stage3MasteredCount,
+              total: dist.stage1Count + dist.stage2Count + dist.stage3Count + dist.stage3MasteredCount,
+            };
+          }
+          const total = counts.total || 1;
+          const pct2plus = ((counts.s2 + counts.s3 + counts.s3m) / total) * 100;
+          const pct3 = ((counts.s3 + counts.s3m) / total) * 100;
+          const lastStudied = agg?.lastStudiedAt ? new Date(agg.lastStudiedAt).toLocaleDateString() : "—";
+          const status = computeStatus(counts);
+          const atRisk = (!agg?.lastStudiedAt || agg.lastStudiedAt < sevenDaysAgo || pct2plus < 20);
+          return `
+            <div class="cardRow" style="margin-top:${sharedDecks.indexOf(deck) === 0 ? '0' : '8px'};">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                  <strong>${escapeHtml(deck.deckSnapshot.deckName)}</strong>
+                  <div class="small" style="margin-top:4px;">Last studied: ${lastStudied}</div>
+                </div>
+                <div class="small" style="text-align:right;">
+                  Time: ${formatMinutes(agg?.totalTimeMs)} min<br/>
+                  Stage2+: ${pct2plus.toFixed(0)}%<br/>
+                  Stage3: ${pct3.toFixed(0)}%<br/>
+                  Status: ${status}${atRisk ? " • At risk" : ""}
+                </div>
+              </div>
+            </div>
+          `;
+        }).join("");
+
+        return `
+          <label class="label" for="studentAnalyticsSelect" style="margin-top:12px;">Select Student</label>
+          <select id="studentAnalyticsSelect" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:10px; font-size:14px; margin-bottom:12px;">
+            ${enrolledStudents.map(s => `
+              <option value="${s.id}" ${s.id === selectedStudentId ? "selected" : ""}>${escapeHtml(s.email)}</option>
+            `).join("")}
+          </select>
+          <div class="deckStats" style="margin-top:8px;">
+            <div><strong>Total time:</strong> ${(totalTimeMsStudent/60000).toFixed(1)} min</div>
+          </div>
+          <div style="margin-top:12px;">${rows || `<p class="small">No data yet.</p>`}</div>
+        `;
+      }
+
+      return `
+        <h3 style="font-size:16px; margin-top:16px; margin-bottom:8px;">Class Overview</h3>
+        <div class="deckStats" style="margin-top:8px;">
+          <div><strong>Total students:</strong> ${totalStudents}</div>
+          <div><strong>Active (7d):</strong> ${activeStudents}</div>
+          <div><strong>Avg time:</strong> ${avgTimeMinutes.toFixed(1)} min</div>
+          <div><strong>Stage2+:</strong> ${pctStage2Plus.toFixed(0)}%</div>
+          <div><strong>Stage3:</strong> ${pctStage3.toFixed(0)}%</div>
+          <div><strong>Mastered:</strong> ${pctMastered.toFixed(0)}%</div>
+        </div>
+        <div class="deckStats" style="margin-top:8px;">
+          <div><strong>Not started:</strong> ${notStarted}</div>
+          <div><strong>In progress:</strong> ${inProgress}</div>
+          <div><strong>Completed:</strong> ${completed}</div>
+        </div>
+        <hr style="margin-top:16px;" />
+        <h3 style="font-size:16px; margin-top:16px; margin-bottom:8px;">Per-Deck</h3>
+        ${renderDeckAnalytics()}
+        <hr style="margin-top:16px;" />
+        <h3 style="font-size:16px; margin-top:16px; margin-bottom:8px;">Per-Student</h3>
+        ${renderStudentAnalytics()}
+      `;
+    }
+
+    appEl.innerHTML = `
+      <section class="card">
+        <h2 style="margin:0; text-align:center;">${escapeHtml(classObj.name)}</h2>
+        
+        ${classObj.allowedDomains && classObj.allowedDomains.length > 0 ? `
+          <p class="sub" style="text-align:center; margin-top:8px;">
+            Allowed domains: ${escapeHtml(classObj.allowedDomains.join(", "))}
+          </p>
+        ` : `
+          <p class="sub" style="text-align:center; margin-top:8px;">
+            All email domains allowed
+          </p>
         `}
         
         <div class="btns" style="margin-top:16px; justify-content:center;">
-          <button id="backToClasses">Back to Classes</button>
+          <button type="button" data-tab="roster" class="${tab === "roster" ? "primary" : ""}">Roster</button>
+          <button type="button" data-tab="shared" class="${tab === "shared" ? "primary" : ""}">Shared Decks</button>
+          ${isTeacher ? `<button type="button" data-tab="analytics" class="${tab === "analytics" ? "primary" : ""}">Analytics</button>` : ""}
+        </div>
+        
+        <hr style="margin-top:12px;" />
+        
+        ${tab === "roster" ? renderRosterSection() : ""}
+        ${tab === "shared" ? renderSharedSection() : ""}
+        ${tab === "analytics" ? renderAnalyticsSection() : ""}
+        
+        <div class="btns" style="margin-top:16px; justify-content:center;">
+          <button type="button" id="backToClasses">Back to Classes</button>
         </div>
       </section>
     `;
+
+    // Handle tab switching
+    appEl.querySelectorAll("button[data-tab]").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        const tabValue = btn.getAttribute("data-tab");
+        state.classDetailTab = tabValue;
+        save();
+        renderAll();
+      });
+    });
 
     if (isTeacher) {
       const addForm = appEl.querySelector("#addStudentForm");
@@ -506,4 +784,8 @@ function escapeHtml(str) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function formatMinutes(ms = 0) {
+  return ((ms || 0) / 60000).toFixed(1);
 }
