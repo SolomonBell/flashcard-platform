@@ -195,6 +195,11 @@ export function getSessionsForUser(userId) {
   }
 }
 
+// Helper to read all analytics (for teacher dashboards)
+export function getAllAnalytics() {
+  return loadAnalytics();
+}
+
 // Clean up session on page unload/visibility change
 if (typeof window !== "undefined") {
   window.addEventListener("beforeunload", () => {

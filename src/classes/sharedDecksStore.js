@@ -144,6 +144,11 @@ export function getSharedDecksForStudent(studentId) {
   return allSharedDecks.filter(d => classIds.includes(d.classId));
 }
 
+// Helper to read all shared progress (for analytics dashboards)
+export function getAllSharedProgress() {
+  return loadSharedProgress();
+}
+
 function loadClasses() {
   try {
     const raw = localStorage.getItem("knowit_classes_v1");
