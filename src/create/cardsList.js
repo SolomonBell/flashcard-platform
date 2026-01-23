@@ -21,6 +21,13 @@ export function renderCardsList(state) {
           <textarea data-field="back" placeholder="Answer">${escapeHtml(c.back)}</textarea>
         </div>
       </div>
+      
+      <div style="margin-top:8px;">
+        <label style="display:flex; align-items:center; gap:6px; font-size:13px;">
+          <input type="checkbox" data-field="longAnswer" ${c.longAnswer ? "checked" : ""} />
+          <span>Long Answer (AI graded)</span>
+        </label>
+      </div>
     </div>
   `).join("");
 }
@@ -36,6 +43,20 @@ export function wireCardsListHandlers(rootEl, state, { save, render, blankCard }
       if (!card) return;
 
       card[field] = e.target.value;
+      save();
+      // 🚫 no render() here
+    });
+  });
+
+  // Handle checkbox changes for longAnswer
+  rootEl.querySelectorAll("input[data-field='longAnswer']").forEach(el => {
+    el.addEventListener("change", (e) => {
+      const row = e.target.closest(".cardRow");
+      const id = row.getAttribute("data-id");
+      const card = state.cards.find(x => x.id === id);
+      if (!card) return;
+
+      card.longAnswer = e.target.checked;
       save();
       // 🚫 no render() here
     });

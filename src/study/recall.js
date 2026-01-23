@@ -1,4 +1,6 @@
 import { escapeHtml } from "../utils.js";
+import { gradeLongAnswer } from "../aiGrader.js";
+import { recordAnswer } from "../analytics/analyticsStore.js";
 
 export function renderRecall(appEl, state, current, deps) {
   const progress = deps.renderProgressBar(state);
@@ -90,9 +92,9 @@ export function renderRecall(appEl, state, current, deps) {
           ${step === "result" ? "readonly" : ""}
         ></textarea>
 
-        ${
-          isWrong
-            ? `
+    ${
+      isWrong
+        ? `
               <div style="margin-top:14px;">
                 <p class="help" style="text-align:left; margin:0 0 6px;">
                   Correct Answer:
@@ -109,10 +111,30 @@ export function renderRecall(appEl, state, current, deps) {
                     lastResult.correctAnswer
                   )}</pre>
                 </div>
+                ${
+                  lastResult.aiFeedback
+                    ? `
+                      <p class="help" style="text-align:left; margin:14px 0 6px;">
+                        AI Feedback:
+                      </p>
+                      <div
+                        class="card"
+                        style="
+                          border-radius:10px;
+                          padding:12px;
+                        "
+                      >
+                        <pre style="margin:0; white-space:pre-wrap; font-family:inherit;">${escapeHtml(
+                          lastResult.aiFeedback
+                        )}</pre>
+                      </div>
+                    `
+                    : ""
+                }
               </div>
             `
-            : ""
-        }
+        : ""
+    }
 
         <div class="btns" style="margin-top:16px;">
           ${
@@ -146,16 +168,35 @@ export function renderRecall(appEl, state, current, deps) {
           return;
         }
 
-        const correctAnswer = String(current.back ?? "").trim();
-        const isCorrect = normalize(userAnswer) === normalize(correctAnswer);
-
         const c = state.cards.find((x) => x.id === current.id);
         if (!c) return;
+
+        const correctAnswer = String(current.back ?? "").trim();
+        let isCorrect;
+        let aiFeedback = null;
+
+        if (c.longAnswer) {
+          // Use AI grader for long answer cards
+          const graderResult = gradeLongAnswer({
+            promptFront: current.front,
+            expectedAnswer: correctAnswer,
+            userAnswer: userAnswer,
+            cardStage: c.stage,
+          });
+          isCorrect = graderResult.correct;
+          aiFeedback = graderResult.feedback;
+        } else {
+          // Use exact match for normal cards
+          isCorrect = normalize(userAnswer) === normalize(correctAnswer);
+        }
 
         applyStageRules(c, isCorrect);
         deps.save();
 
-        lastResult = { isCorrect, userAnswer, correctAnswer };
+        // Record answer in analytics (use grader.correct for longAnswer cards)
+        recordAnswer({ isCorrect });
+
+        lastResult = { isCorrect, userAnswer, correctAnswer, aiFeedback };
         step = "result";
         render();
       });

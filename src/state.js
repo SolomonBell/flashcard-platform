@@ -21,6 +21,7 @@ function migrateLegacyStateToUser(userId) {
         ...c,
         stage: [1, 2, 3].includes(c.stage) ? c.stage : 1,
         stage3Mastered: Boolean(c.stage3Mastered),
+        longAnswer: Boolean(c.longAnswer), // Default to false if missing
       }));
     }
 
@@ -54,6 +55,7 @@ export function loadStateForUser(userId) {
         ...c,
         stage: [1, 2, 3].includes(c.stage) ? c.stage : 1,
         stage3Mastered: Boolean(c.stage3Mastered),
+        longAnswer: Boolean(c.longAnswer), // Default to false if missing
       }));
     }
 
@@ -102,6 +104,7 @@ export function loadState() {
         ...c,
         stage: [1, 2, 3].includes(c.stage) ? c.stage : 1,
         stage3Mastered: Boolean(c.stage3Mastered),
+        longAnswer: Boolean(c.longAnswer), // Default to false if missing
       }));
     }
 

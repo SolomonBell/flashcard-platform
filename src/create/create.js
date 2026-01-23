@@ -10,6 +10,7 @@ export function blankCard() {
     createdAt: Date.now(),
     lastSeenAt: null,
     stage3Mastered: false,
+    longAnswer: false,
   };
 }
 
