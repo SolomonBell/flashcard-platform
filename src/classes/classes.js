@@ -583,7 +583,66 @@ function renderClassDetail(appEl, { currentUser, classId, state, setScreen, save
         `;
       }
 
+      // Collect hard cards across all shared decks
+      const hardCardsMap = new Map(); // cardSignature -> { front, attempts, incorrectAttempts, wrongRate }
+      enrolledStudents.forEach(student => {
+        sharedDeckIds.forEach(deckId => {
+          const agg = getAggregate(student.id, deckId);
+          if (agg?.cardStats) {
+            Object.entries(agg.cardStats).forEach(([sig, stats]) => {
+              if (!hardCardsMap.has(sig)) {
+                hardCardsMap.set(sig, {
+                  front: stats.front || "",
+                  attempts: 0,
+                  incorrectAttempts: 0,
+                });
+              }
+              const entry = hardCardsMap.get(sig);
+              entry.attempts += stats.attempts || 0;
+              entry.incorrectAttempts += stats.incorrectAttempts || 0;
+            });
+          }
+        });
+      });
+      
+      // Calculate wrong rates and get top 5
+      const hardCards = Array.from(hardCardsMap.entries())
+        .map(([sig, stats]) => ({
+          signature: sig,
+          front: stats.front,
+          attempts: stats.attempts,
+          incorrectAttempts: stats.incorrectAttempts,
+          wrongRate: stats.attempts > 0 ? stats.incorrectAttempts / stats.attempts : 0,
+        }))
+        .filter(c => c.attempts >= 3) // Only show cards with at least 3 attempts
+        .sort((a, b) => b.wrongRate - a.wrongRate)
+        .slice(0, 5);
+      
+      function renderHardCards() {
+        if (hardCards.length === 0) {
+          return `<p class="small" style="margin-top:8px;">No hard cards data yet. Students need to attempt cards at least 3 times.</p>`;
+        }
+        return hardCards.map(card => {
+          const frontText = card.front.length > 60 ? card.front.substring(0, 60) + "..." : card.front;
+          const wrongPct = (card.wrongRate * 100).toFixed(0);
+          return `
+            <div class="cardRow" style="margin-top:${hardCards.indexOf(card) === 0 ? '0' : '8px'};">
+              <div>
+                <strong>${escapeHtml(frontText)}</strong>
+                <div class="small" style="margin-top:4px;">
+                  Wrong rate: ${wrongPct}% (${card.incorrectAttempts}/${card.attempts} attempts)
+                </div>
+              </div>
+            </div>
+          `;
+        }).join("");
+      }
+      
+
       return `
+        <div class="btns" style="margin-top:8px; justify-content:flex-end;">
+          <button type="button" id="exportCSVBtn" class="primary">Export CSV</button>
+        </div>
         <h3 style="font-size:16px; margin-top:16px; margin-bottom:8px;">Class Overview</h3>
         <div class="deckStats" style="margin-top:8px;">
           <div><strong>Total students:</strong> ${totalStudents}</div>
@@ -604,6 +663,10 @@ function renderClassDetail(appEl, { currentUser, classId, state, setScreen, save
         <hr style="margin-top:16px;" />
         <h3 style="font-size:16px; margin-top:16px; margin-bottom:8px;">Per-Student</h3>
         ${renderStudentAnalytics()}
+        <hr style="margin-top:16px;" />
+        <h3 style="font-size:16px; margin-top:16px; margin-bottom:8px;">Hard Cards</h3>
+        <p class="small" style="margin-top:4px;">Top 5 cards with highest wrong rates (minimum 3 attempts)</p>
+        ${renderHardCards()}
       `;
     }
 
@@ -772,6 +835,84 @@ function renderClassDetail(appEl, { currentUser, classId, state, setScreen, save
       save();
       renderAll();
     });
+    
+    // Handle CSV export button (analytics tab only)
+    if (isTeacher && tab === "analytics") {
+      const exportBtn = appEl.querySelector("#exportCSVBtn");
+      if (exportBtn) {
+        exportBtn.addEventListener("click", () => {
+          // Re-render analytics section to get fresh data, then export
+          const analytics = getAllAnalytics();
+          const allUsers = loadUsers();
+          const enrolledStudents = classObj.studentIds.map(id => allUsers.find(u => u.id === id)).filter(Boolean);
+          const sharedDecks = getSharedDecksByClass(classId);
+          const sharedDeckIds = sharedDecks.map(d => d.id);
+          
+          const rows = [];
+          rows.push(["Email", "Total Time (min)", "Total Sessions", "Total Answers", "Correct", "Correct Rate (%)"]);
+          
+          enrolledStudents.forEach(student => {
+            let totalTimeMs = 0;
+            let totalSessions = 0;
+            let totalAnswers = 0;
+            let totalCorrect = 0;
+            
+            sharedDeckIds.forEach(deckId => {
+              const agg = getAggregate(student.id, deckId);
+              if (agg) {
+                totalTimeMs += agg.totalTimeMs || 0;
+                totalSessions += agg.totalSessions || 0;
+                totalAnswers += agg.totals?.answersSubmitted || 0;
+                totalCorrect += agg.totals?.correctCount || 0;
+              }
+            });
+            
+            const correctRate = totalAnswers > 0 ? ((totalCorrect / totalAnswers) * 100).toFixed(1) : "0.0";
+            rows.push([
+              student.email,
+              (totalTimeMs / 60000).toFixed(1),
+              totalSessions,
+              totalAnswers,
+              totalCorrect,
+              correctRate,
+            ]);
+          });
+          
+          const csvContent = rows.map(row => 
+            row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")
+          ).join("\n");
+          
+          const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+          const link = document.createElement("a");
+          const url = URL.createObjectURL(blob);
+          link.setAttribute("href", url);
+          link.setAttribute("download", `class_${classObj.name.replace(/[^a-z0-9]/gi, "_")}_analytics.csv`);
+          link.style.visibility = "hidden";
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        });
+      }
+      
+      // Handle analytics select changes
+      const deckSelect = appEl.querySelector("#deckAnalyticsSelect");
+      if (deckSelect) {
+        deckSelect.addEventListener("change", (e) => {
+          state.classAnalyticsDeckId = e.target.value;
+          save();
+          render();
+        });
+      }
+      
+      const studentSelect = appEl.querySelector("#studentAnalyticsSelect");
+      if (studentSelect) {
+        studentSelect.addEventListener("change", (e) => {
+          state.classAnalyticsStudentId = e.target.value;
+          save();
+          render();
+        });
+      }
+    }
   }
 
   render();

@@ -4,8 +4,9 @@ const MAX_HISTORY_ENTRIES = 50;
 // Analytics data structure:
 // {
 //   sessions: [{ userId, deckContext, deckId, startedAt, endedAt, durationMs, interactions }],
-//   aggregates: { [userId]: { [deckId]: { totalTimeMs, totalSessions, lastStudiedAt, totals, latestStageDistribution, history } } }
+//   aggregates: { [userId]: { [deckId]: { totalTimeMs, totalSessions, lastStudiedAt, totals, latestStageDistribution, history, cardStats } } }
 // }
+// cardStats: { [cardSignature]: { attempts, incorrectAttempts } }
 
 function loadAnalytics() {
   try {
@@ -86,10 +87,14 @@ export function endSession() {
           stage3MasteredCount: 0,
         },
         history: [],
+        cardStats: {}, // { [cardSignature]: { attempts, incorrectAttempts } }
       };
     }
     
     const aggregate = analytics.aggregates[userId][deckId];
+    if (!aggregate.cardStats) {
+      aggregate.cardStats = {};
+    }
     aggregate.totalTimeMs += currentSession.durationMs;
     aggregate.totalSessions += 1;
     aggregate.lastStudiedAt = currentSession.endedAt;
@@ -116,7 +121,22 @@ export function endSession() {
   }
 }
 
-export function recordAnswer({ isCorrect }) {
+// Simple hash function for card signature
+function getCardSignature(card) {
+  if (!card) return null;
+  // Use front+back as signature (or card.id if available and stable)
+  const text = `${card.front || ""}|${card.back || ""}`;
+  // Simple hash (not cryptographic, just for grouping)
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) {
+    const char = text.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return `card_${Math.abs(hash)}`;
+}
+
+export function recordAnswer({ isCorrect, card }) {
   try {
     if (!currentSession) return;
     
@@ -125,6 +145,58 @@ export function recordAnswer({ isCorrect }) {
       currentSession.interactions.correctCount += 1;
     } else {
       currentSession.interactions.incorrectCount += 1;
+    }
+    
+    // Track per-card stats if card info is available
+    if (card) {
+      const analytics = loadAnalytics();
+      const { userId, deckId } = currentSession;
+      
+      if (!analytics.aggregates[userId]) {
+        analytics.aggregates[userId] = {};
+      }
+      if (!analytics.aggregates[userId][deckId]) {
+        analytics.aggregates[userId][deckId] = {
+          totalTimeMs: 0,
+          totalSessions: 0,
+          lastStudiedAt: null,
+          totals: {
+            answersSubmitted: 0,
+            correctCount: 0,
+            incorrectCount: 0,
+          },
+          latestStageDistribution: {
+            stage1Count: 0,
+            stage2Count: 0,
+            stage3Count: 0,
+            stage3MasteredCount: 0,
+          },
+          history: [],
+          cardStats: {},
+        };
+      }
+      
+      const aggregate = analytics.aggregates[userId][deckId];
+      if (!aggregate.cardStats) {
+        aggregate.cardStats = {};
+      }
+      
+      const cardSig = getCardSignature(card);
+      if (cardSig) {
+        if (!aggregate.cardStats[cardSig]) {
+          aggregate.cardStats[cardSig] = {
+            attempts: 0,
+            incorrectAttempts: 0,
+            front: card.front || "", // Store front text for display
+          };
+        }
+        aggregate.cardStats[cardSig].attempts += 1;
+        if (!isCorrect) {
+          aggregate.cardStats[cardSig].incorrectAttempts += 1;
+        }
+        
+        saveAnalytics(analytics);
+      }
     }
   } catch (err) {
     // Fail silently

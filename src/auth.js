@@ -7,8 +7,9 @@ export function renderAuthScreen(appEl, onLoginSuccess) {
 
   function render() {
     appEl.innerHTML = `
-      <section class="card">
-        <h2 style="margin:0; text-align:center;">${isSignUp ? "Create Account" : "Sign In"}</h2>
+      <div style="display:flex; justify-content:center; width:100%;">
+        <section class="card" style="max-width:400px; width:100%;">
+          <h2 style="margin:0; text-align:center;">${isSignUp ? "Create Account" : "Sign In"}</h2>
         
         ${errorMessage ? `<div style="color:#dc2626; font-size:13px; margin-top:12px; padding:8px; background:#fff1f2; border:1px solid #fecdd3; border-radius:8px;">${errorMessage}</div>` : ""}
         
@@ -36,7 +37,8 @@ export function renderAuthScreen(appEl, onLoginSuccess) {
             </button>
           </div>
         </form>
-      </section>
+        </section>
+      </div>
     `;
 
     const form = appEl.querySelector("#authForm");

@@ -42,8 +42,8 @@ function setStateAndRender(nextState) {
 }
 
 function feedback(payload) {
-  // Record answer in analytics
-  recordAnswer({ isCorrect: payload.correct });
+  // Record answer in analytics (pass card if available)
+  recordAnswer({ isCorrect: payload.correct, card: payload.current });
   
   renderFeedback(appEl, state, payload, {
     renderProgressBar,
@@ -258,7 +258,7 @@ function renderAll() {
 
       // Custom feedback wrapper for shared study
       const sharedFeedback = (payload) => {
-        recordAnswer({ isCorrect: payload.correct });
+        recordAnswer({ isCorrect: payload.correct, card: payload.current });
         renderFeedback(appEl, sharedState, payload, {
           renderProgressBar,
           save: sharedSave,
