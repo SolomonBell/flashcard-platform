@@ -63,6 +63,9 @@ export function loadStateForUser(userId) {
     if (!parsed.deckId) {
       parsed.deckId = `deck_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     }
+    if (parsed.lastShownCardId === undefined) {
+      parsed.lastShownCardId = null;
+    }
 
     return parsed;
   } catch {
@@ -81,6 +84,7 @@ export function newStateForUser() {
     screen: "create", // "create" | "study" | "classes" | "sharedStudy"
     cards: [],
     deckId: `deck_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, // Stable ID for analytics
+    lastShownCardId: null, // Avoid showing same card twice in a row
   };
 }
 

@@ -21,12 +21,24 @@ import {
 import { loadStateForUser } from "../state.js";
 import { getAllAnalytics } from "../analytics/analyticsStore.js";
 import { getAllSharedProgress } from "./sharedDecksStore.js";
+import {
+  useSupabaseClasses,
+  getClassTeachers,
+  addTeacherToClass,
+  removeTeacherFromClass,
+  getOrganizationsForUser,
+  getOrgMembers,
+  setOrgMemberRole,
+} from "./classesSupabase.js";
 
 export function renderClassesScreen(appEl, { currentUser, state, setScreen, save, renderAll }) {
   const classView = state.classView || "home";
   const classId = state.classId || null;
+  const orgView = state.orgView || false;
 
-  if (classView === "create") {
+  if (orgView) {
+    renderOrganizationScreen(appEl, { currentUser, state, setScreen, save, renderAll });
+  } else if (classView === "create") {
     renderCreateClassForm(appEl, { currentUser, state, setScreen, save, renderAll });
   } else if (classView === "detail" && classId) {
     renderClassDetail(appEl, { currentUser, classId, state, setScreen, save, renderAll });
@@ -51,6 +63,7 @@ function renderClassesHome(appEl, { currentUser, state, setScreen, save, renderA
       ${isTeacher ? `
         <div class="btns" style="margin-top:16px; justify-content:center;">
           <button class="primary" id="createClassBtn">Create Class</button>
+          <button class="small" id="orgAdminBtn" style="display:none;">Organization</button>
         </div>
       ` : ""}
       
@@ -125,6 +138,23 @@ function renderClassesHome(appEl, { currentUser, state, setScreen, save, renderA
       renderAll();
     });
   }
+
+  (async () => {
+    const useSupabase = await useSupabaseClasses();
+    const orgs = useSupabase ? await getOrganizationsForUser() : [];
+    const isOrgAdmin = orgs.some((o) => o.role === "admin");
+    const orgBtn = appEl.querySelector("#orgAdminBtn");
+    if (orgBtn) {
+      if (useSupabase && isOrgAdmin) {
+        orgBtn.style.display = "";
+        orgBtn.addEventListener("click", () => {
+          state.orgView = true;
+          save();
+          renderAll();
+        });
+      } else orgBtn.style.display = "none";
+    }
+  })();
 
   appEl.querySelectorAll("button[data-class-id]").forEach(btn => {
     btn.addEventListener("click", () => {
@@ -308,6 +338,19 @@ function renderClassDetail(appEl, { currentUser, classId, state, setScreen, save
               `).join("")}
             </div>
           `}
+        ` : ""}
+        ${isTeacher ? `
+          <hr style="margin-top:16px;" />
+          <h3 style="font-size:16px; margin-top:16px; margin-bottom:8px;">Teachers</h3>
+          <div id="teachersSection">
+            <p class="small" style="margin-top:8px;">Loading…</p>
+          </div>
+          <form id="addTeacherForm" style="margin-top:8px; display:none;">
+            <div style="display:flex; gap:8px;">
+              <input type="email" id="teacherEmail" placeholder="teacher@example.com" style="flex:1;" />
+              <button type="submit" class="primary">Add teacher</button>
+            </div>
+          </form>
         ` : ""}
       `;
     }
@@ -782,7 +825,48 @@ function renderClassDetail(appEl, { currentUser, classId, state, setScreen, save
           render();
         });
       });
-      
+
+      (async () => {
+        const useSupabase = await useSupabaseClasses();
+        const teachersEl = appEl.querySelector("#teachersSection");
+        const addForm = appEl.querySelector("#addTeacherForm");
+        if (!teachersEl) return;
+        if (!useSupabase) {
+          teachersEl.innerHTML = `<p class="small" style="margin-top:8px;">Co-teachers: Not available in local mode.</p>`;
+          return;
+        }
+        const teachers = await getClassTeachers(classId);
+        const classObj2 = getClassById(classId);
+        const isOwner = classObj2 && classObj2.teacherId === currentUser.id;
+        teachersEl.innerHTML = teachers.length === 0
+          ? `<p class="small" style="margin-top:8px;">No co-teachers yet.</p>`
+          : `<div style="margin-top:8px;">${teachers.map(t => `
+            <div class="cardRow" style="margin-top:8px;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span>${escapeHtml(t.email)}</span>
+                ${isOwner ? `<button class="danger" data-remove-teacher-id="${t.user_id}">Remove</button>` : ""}
+              </div>
+            </div>
+          `).join("")}</div>`;
+        if (addForm && isOwner) {
+          addForm.style.display = "flex";
+          addForm.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const email = addForm.querySelector("#teacherEmail").value.trim();
+            if (!email) return;
+            const r = await addTeacherToClass(classId, email);
+            if (r.success) { addForm.querySelector("#teacherEmail").value = ""; render(); } else alert(r.error || "Failed to add.");
+          });
+        }
+        appEl.querySelectorAll("button[data-remove-teacher-id]").forEach(btn => {
+          btn.addEventListener("click", async () => {
+            const userId = btn.getAttribute("data-remove-teacher-id");
+            await removeTeacherFromClass(classId, userId);
+            render();
+          });
+        });
+      })();
+
       // Handle shared deck removal
       appEl.querySelectorAll("button[data-remove-shared-deck]").forEach(btn => {
         btn.addEventListener("click", () => {
@@ -916,6 +1000,93 @@ function renderClassDetail(appEl, { currentUser, classId, state, setScreen, save
   }
 
   render();
+}
+
+function renderOrganizationScreen(appEl, { currentUser, state, setScreen, save, renderAll }) {
+  (async () => {
+    const useSupabase = await useSupabaseClasses();
+    if (!useSupabase) {
+      appEl.innerHTML = `
+        <section class="card">
+          <h2 style="margin:0; text-align:center;">Organization</h2>
+          <p class="sub" style="margin-top:12px; text-align:center;">Organization management is available when using Supabase.</p>
+          <div class="btns" style="margin-top:16px;"><button id="backFromOrg">Back</button></div>
+        </section>
+      `;
+      appEl.querySelector("#backFromOrg").addEventListener("click", () => {
+        state.orgView = false;
+        save();
+        renderAll();
+      });
+      return;
+    }
+    const orgs = await getOrganizationsForUser();
+    const selectedOrgId = state.orgSelectedId || null;
+    const isAdmin = selectedOrgId ? orgs.find((o) => o.id === selectedOrgId)?.role === "admin" : false;
+    const members = selectedOrgId && isAdmin ? await getOrgMembers(selectedOrgId) : [];
+    const selectedOrg = orgs.find((o) => o.id === selectedOrgId);
+
+    appEl.innerHTML = `
+      <section class="card">
+        <h2 style="margin:0; text-align:center;">Organization</h2>
+        <h3 style="font-size:16px; margin-top:16px; margin-bottom:8px;">Your organizations</h3>
+        ${orgs.length === 0 ? `<p class="small">You are not in any organization.</p>` : `
+          <div style="margin-top:8px;">
+            ${orgs.map((o) => `
+              <div class="cardRow" style="margin-top:8px;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <span><strong>${escapeHtml(o.name)}</strong> (${o.role})</span>
+                  <button type="button" data-org-id="${o.id}" class="${selectedOrgId === o.id ? "primary" : ""}">${selectedOrgId === o.id ? "Selected" : "View"}</button>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        `}
+        ${selectedOrgId && isAdmin ? `
+          <hr style="margin-top:16px;" />
+          <h3 style="font-size:16px; margin-top:16px; margin-bottom:8px;">Members – ${escapeHtml(selectedOrg?.name || "")}</h3>
+          ${members.length === 0 ? `<p class="small">No members.</p>` : `
+            <div style="margin-top:8px;">
+              ${members.map((m) => `
+                <div class="cardRow" style="margin-top:8px;">
+                  <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>${escapeHtml(m.email)}</span>
+                    <select data-member-user-id="${m.user_id}" class="roleSelect" style="padding:4px 8px;">
+                      <option value="member" ${m.role === "member" ? "selected" : ""}>Member</option>
+                      <option value="admin" ${m.role === "admin" ? "selected" : ""}>Admin</option>
+                    </select>
+                  </div>
+                </div>
+              `).join("")}
+            </div>
+          `}
+        ` : ""}
+        <div class="btns" style="margin-top:16px;"><button id="backFromOrg">Back</button></div>
+      </section>
+    `;
+
+    appEl.querySelectorAll("button[data-org-id]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        state.orgSelectedId = btn.getAttribute("data-org-id");
+        save();
+        renderAll();
+      });
+    });
+    appEl.querySelectorAll("select.roleSelect").forEach((sel) => {
+      sel.addEventListener("change", async (e) => {
+        const userId = e.target.getAttribute("data-member-user-id");
+        const role = e.target.value;
+        const r = await setOrgMemberRole(selectedOrgId, userId, role);
+        if (!r.success) alert(r.error || "Failed to update role.");
+      });
+    });
+    appEl.querySelector("#backFromOrg").addEventListener("click", () => {
+      state.orgView = false;
+      state.orgSelectedId = null;
+      save();
+      renderAll();
+    });
+  })();
 }
 
 function escapeHtml(str) {

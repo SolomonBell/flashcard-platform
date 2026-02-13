@@ -7,22 +7,47 @@ import { renderClassesScreen } from "./classes/classes.js";
 import { getCurrentUser, clearSession } from "./authStore.js";
 import { renderAuthScreen } from "./auth.js";
 import { startSession, endSession, recordAnswer, updateStageSnapshot } from "./analytics/analyticsStore.js";
+import { getCurrentAuthUser } from "./authBridge.js";
+import { setAuthGetter } from "./dataStore.js";
+import * as authSupabase from "./authSupabase.js";
 
 let state = null;
 let currentUserId = null;
+let currentAuthUser = null;
 
 const appEl = document.getElementById("app");
 
-function loadUserState() {
-  const user = getCurrentUser();
+setAuthGetter(() => currentAuthUser);
+
+async function loadUserState() {
+  const user = await getCurrentAuthUser();
+  currentAuthUser = user;
   if (!user) {
     state = null;
     currentUserId = null;
     return;
   }
-  
   currentUserId = user.id;
-  state = loadStateForUser(currentUserId) ?? newStateForUser();
+  const useSupabase = await import("./dataStore.js").then(m => m.useSupabase());
+  if (useSupabase) {
+    const store = await import("./dataStore.js").then(m => m.getDeckStore());
+    if (store) {
+      const decks = await store.getDecksForUser(user.id);
+      if (decks.length) {
+        const first = await store.loadDeck(user.id, decks[0].id);
+        state = first;
+        state.screen = state.screen || "create";
+        state.deckId = state.deckId || state.id;
+        state.lastShownCardId = state.lastShownCardId ?? null;
+      } else {
+        state = newStateForUser();
+      }
+    } else {
+      state = loadStateForUser(currentUserId) ?? newStateForUser();
+    }
+  } else {
+    state = loadStateForUser(currentUserId) ?? newStateForUser();
+  }
 }
 
 function setScreen(screen) {
@@ -30,9 +55,17 @@ function setScreen(screen) {
   state.screen = screen;
 }
 
-function save() {
+async function save() {
   if (!state || !currentUserId) return;
-  saveStateForUser(currentUserId, state);
+  const useSupabase = await import("./dataStore.js").then(m => m.useSupabase());
+  if (useSupabase) {
+    const store = await import("./dataStore.js").then(m => m.getDeckStore());
+    if (store) {
+      const payload = { deckId: state.deckId || state.id, id: state.deckId || state.id, title: "My Deck", description: "", cards: state.cards || [] };
+      const result = await store.saveDeck(currentUserId, payload);
+      if (result?.id) state.deckId = result.id;
+    } else saveStateForUser(currentUserId, state);
+  } else saveStateForUser(currentUserId, state);
 }
 
 function setStateAndRender(nextState) {
@@ -101,8 +134,11 @@ function renderNavigation(currentUser) {
   logoutBtn.textContent = "Log out";
   logoutBtn.className = "small";
   logoutBtn.style.cssText = "padding:6px 10px; font-size:12px;";
-  logoutBtn.addEventListener("click", () => {
-    clearSession();
+  logoutBtn.addEventListener("click", async () => {
+    const useSupabase = await import("./authBridge.js").then(m => m.useSupabaseAuth());
+    if (useSupabase) await authSupabase.signOut();
+    else clearSession();
+    currentAuthUser = null;
     renderAll();
   });
   navContainer.appendChild(logoutBtn);
@@ -112,9 +148,67 @@ function renderNavigation(currentUser) {
 
 let previousScreen = null;
 
-function renderAll() {
-  const currentUser = getCurrentUser();
-  
+function renderVerifyScreen() {
+  appEl.innerHTML = `
+    <div style="display:flex; justify-content:center; width:100%;">
+      <section class="card" style="max-width:400px; width:100%;">
+        <h2 style="margin:0; text-align:center;">Check your email</h2>
+        <p style="margin-top:12px; font-size:14px;">Verify your email to continue. We sent a link to <strong>${currentAuthUser?.email || ""}</strong>.</p>
+        <div class="btns" style="margin-top:16px;">
+          <button type="button" class="primary" id="resendVerify">Resend verification email</button>
+          <button type="button" id="signOutVerify">Sign out</button>
+        </div>
+      </section>
+    </div>
+  `;
+  appEl.querySelector("#resendVerify").addEventListener("click", async () => {
+    const r = await authSupabase.resendConfirmationEmail(currentAuthUser?.email || "");
+    if (r.success) alert("Sent. Check your inbox."); else alert(r.error || "Failed to resend.");
+  });
+  appEl.querySelector("#signOutVerify").addEventListener("click", async () => {
+    await authSupabase.signOut();
+    currentAuthUser = null;
+    renderAll();
+  });
+}
+
+function renderResetPasswordScreen() {
+  appEl.innerHTML = `
+    <div style="display:flex; justify-content:center; width:100%;">
+      <section class="card" style="max-width:400px; width:100%;">
+        <h2 style="margin:0; text-align:center;">Set new password</h2>
+        <form id="resetPasswordForm" style="margin-top:16px;">
+          <label class="label" for="newPassword">New password</label>
+          <input type="password" id="newPassword" name="newPassword" required style="margin-bottom:12px;" />
+          <div class="btns" style="margin-top:16px;">
+            <button type="submit" class="primary">Update password</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  `;
+  appEl.querySelector("#resetPasswordForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const newPassword = appEl.querySelector("#newPassword").value;
+    const r = await authSupabase.updatePassword(newPassword);
+    if (r.success) {
+      window.location.hash = "";
+      loadUserState();
+      renderAll();
+    } else alert(r.error || "Failed to update password.");
+  });
+}
+
+async function renderAll() {
+  const currentUser = await getCurrentAuthUser();
+  currentAuthUser = currentUser;
+
+  // Reset password flow (Supabase redirect with #reset-password)
+  if (window.location.hash === "#reset-password" || window.location.hash === "#/reset-password") {
+    renderResetPasswordScreen();
+    return;
+  }
+
   // If not logged in, show auth screen
   if (!currentUser) {
     // End any active session
@@ -134,24 +228,30 @@ function renderAll() {
     currentUserId = null;
     previousScreen = null;
     
-    renderAuthScreen(appEl, () => {
-      loadUserState();
+    renderAuthScreen(appEl, async () => {
+      await loadUserState();
       renderAll();
     });
+    return;
+  }
+
+  // Supabase: email not confirmed — show verify screen
+  if (currentUser.emailConfirmed === false) {
+    renderNavigation(currentUser);
+    renderVerifyScreen();
     return;
   }
   
   // Check if user changed (switched accounts)
   if (currentUser.id !== currentUserId) {
-    // End session for previous user
     endSession();
-    loadUserState();
+    await loadUserState();
     previousScreen = null;
   }
   
   // Ensure state is loaded
   if (!state) {
-    loadUserState();
+    await loadUserState();
   }
   
   // Handle session lifecycle: end session when leaving study screens
@@ -195,6 +295,7 @@ function renderAll() {
       setScreen,
       renderAll,
       resetAll: () => resetAllForUser(currentUserId, setStateAndRender),
+      currentUserId,
     });
   } else if (state.screen === "classes") {
     renderClassesScreen(appEl, {
@@ -236,6 +337,7 @@ function renderAll() {
         screen: "sharedStudy",
         cards: progress.cards,
         sharedDeckId: state.sharedDeckId,
+        lastShownCardId: null,
       };
 
       // Custom save function for shared deck progress
@@ -302,5 +404,7 @@ function renderAll() {
 }
 
 // Initialize on load
-loadUserState();
-renderAll();
+(async () => {
+  await loadUserState();
+  renderAll();
+})();

@@ -35,27 +35,39 @@ export function buildMCOptions(currentCard, allCards) {
   return shuffle([correct, ...wrongs]);
 }
 
-function pickNextCard(cards) {
+function pickNextCard(cards, lastShownCardId) {
   const learn = cards.filter(c => c.stage === 1);
   const recall = cards.filter(c => c.stage === 2);
   const memorized = cards.filter(c => c.stage === 3);
 
+  // Exclude lastShownCardId from pool unless it's the only eligible card
+  function withoutLastShown(pool) {
+    if (!pool.length) return pool;
+    if (!lastShownCardId) return pool;
+    const filtered = pool.filter(c => c.id !== lastShownCardId);
+    return filtered.length > 0 ? filtered : pool;
+  }
+
+  const learnPool = withoutLastShown(learn);
+  const recallPool = withoutLastShown(recall);
+  const memorizedPool = withoutLastShown(memorized);
+
   if (learn.length === 0 && recall.length === 0) {
-    return memorized.length ? pickLeastRecentlySeen(memorized) : null;
+    return memorized.length ? pickLeastRecentlySeen(memorizedPool) : null;
   }
 
   if (memorized.length > 0 && Math.random() < STAGE3_INJECTION_CHANCE) {
-    return pickLeastRecentlySeen(memorized);
+    return pickLeastRecentlySeen(memorizedPool);
   }
 
-  if (learn.length) return pickLeastRecentlySeen(learn);
-  if (recall.length) return pickLeastRecentlySeen(recall);
+  if (learnPool.length) return pickLeastRecentlySeen(learnPool);
+  if (recallPool.length) return pickLeastRecentlySeen(recallPool);
 
-  return memorized.length ? pickLeastRecentlySeen(memorized) : null;
+  return memorized.length ? pickLeastRecentlySeen(memorizedPool) : null;
 }
 
 export function renderStudyScreen(appEl, state, deps) {
-  const current = pickNextCard(state.cards);
+  const current = pickNextCard(state.cards, state.lastShownCardId);
 
   if (!current) {
     appEl.innerHTML = `
@@ -80,6 +92,7 @@ export function renderStudyScreen(appEl, state, deps) {
   const card = state.cards.find(c => c.id === current.id) ?? current;
   if (card) {
     markSeen(card);
+    state.lastShownCardId = card.id;
     deps.save();
   }
 

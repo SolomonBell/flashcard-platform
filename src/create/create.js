@@ -1,5 +1,6 @@
 import { uid } from "../utils.js";
 import { renderCardsList, wireCardsListHandlers } from "./cardsList.js";
+import { renderImportPdfFlow } from "./importPdf.js";
 
 export function blankCard() {
   return {
@@ -25,7 +26,18 @@ export function ensureAtLeastOneCard(state, save) {
   }
 }
 
-export function renderCreateScreen(appEl, state, { save, setScreen, renderAll, resetAll }) {
+export function renderCreateScreen(appEl, state, { save, setScreen, renderAll, resetAll, currentUserId } = {}) {
+  if (state.importPdf) {
+    renderImportPdfFlow(appEl, state, {
+      save,
+      setScreen,
+      renderAll,
+      currentUserId: currentUserId || null,
+      blankCard,
+    });
+    return;
+  }
+
   ensureAtLeastOneCard(state, save);
 
   const validCount = getValidCards(state).length;
@@ -65,6 +77,9 @@ export function renderCreateScreen(appEl, state, { save, setScreen, renderAll, r
         </button>
         <button class="primary" id="addCardBottom">
           Add Card
+        </button>
+        <button class="small" id="importPdfBtn" type="button">
+          Import from PDF
         </button>
       </div>
     </section>
@@ -109,6 +124,12 @@ export function renderCreateScreen(appEl, state, { save, setScreen, renderAll, r
   }
 
   appEl.querySelector("#addCardBottom").addEventListener("click", addCardAndScrollToBottom);
+
+  appEl.querySelector("#importPdfBtn").addEventListener("click", () => {
+    state.importPdf = true;
+    save();
+    renderAll();
+  });
 
   // ✅ Total Cards adjusts size:
   // - increasing: add blanks to bottom (no deletion)
