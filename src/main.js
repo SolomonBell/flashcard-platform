@@ -311,7 +311,7 @@ function renderAll() {
   btn.className = "small auth-account-btn";
   btn.textContent = "Account";
   btn.addEventListener("click", () => {
-    import("./auth/authUI.js").then((m) => m.openAuthPanel());
+    import("/src/auth/authUI.js").then((m) => m.openAuthPanel());
   });
   header.appendChild(btn);
 })();
@@ -319,3 +319,14 @@ function renderAll() {
 // Initialize on load
 loadUserState();
 renderAll();
+
+// If URL indicates Supabase recovery/password-reset redirect, open auth panel in "Set new password" mode
+import("/src/auth/auth.js")
+  .then((m) => m.maybeHandleAuthRedirect())
+  .catch(() => {});
+
+// Development: log Supabase connection status after load
+import("./supabaseClient.js")
+  .then((m) => m.getSupabase())
+  .then((client) => console.log(client ? "Supabase connected" : "Supabase NOT configured"))
+  .catch(() => console.log("Supabase NOT configured"));
