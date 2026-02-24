@@ -144,6 +144,7 @@ export function newStateForUser() {
     screen: "create", // "create" | "study" | "classes" | "sharedStudy"
     cards: [],
     deckId: `deck_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, // Stable ID for analytics
+    lastShownCardId: null, // avoid same card twice in a row during study
   };
 }
 
@@ -202,6 +203,7 @@ export function newState() {
   return {
     screen: "create", // "create" | "study"
     cards: [],
+    lastShownCardId: null,
   };
 }
 

@@ -2,7 +2,6 @@ import {
   escapeHtml,
   sampleN,
   shuffle,
-  pickLeastRecentlySeen,
   markSeen,
   STAGE3_INJECTION_CHANCE
 } from "../utils.js";
@@ -35,27 +34,40 @@ export function buildMCOptions(currentCard, allCards) {
   return shuffle([correct, ...wrongs]);
 }
 
-function pickNextCard(cards) {
+/**
+ * Pick next card by stage rules; never the same card twice in a row when more than one eligible.
+ * @param {object[]} cards
+ * @param {string | null} lastShownCardId
+ */
+function pickNextCard(cards, lastShownCardId) {
   const learn = cards.filter(c => c.stage === 1);
   const recall = cards.filter(c => c.stage === 2);
   const memorized = cards.filter(c => c.stage === 3);
 
+  function chooseFrom(pool) {
+    if (!pool.length) return null;
+    if (pool.length <= 1) return pool[0];
+    const eligible = pool.filter(c => c.id !== lastShownCardId);
+    const pickPool = eligible.length ? eligible : pool;
+    return pickPool[Math.floor(Math.random() * pickPool.length)];
+  }
+
   if (learn.length === 0 && recall.length === 0) {
-    return memorized.length ? pickLeastRecentlySeen(memorized) : null;
+    return memorized.length ? chooseFrom(memorized) : null;
   }
 
   if (memorized.length > 0 && Math.random() < STAGE3_INJECTION_CHANCE) {
-    return pickLeastRecentlySeen(memorized);
+    return chooseFrom(memorized);
   }
 
-  if (learn.length) return pickLeastRecentlySeen(learn);
-  if (recall.length) return pickLeastRecentlySeen(recall);
+  if (learn.length) return chooseFrom(learn);
+  if (recall.length) return chooseFrom(recall);
 
-  return memorized.length ? pickLeastRecentlySeen(memorized) : null;
+  return memorized.length ? chooseFrom(memorized) : null;
 }
 
 export function renderStudyScreen(appEl, state, deps) {
-  const current = pickNextCard(state.cards);
+  const current = pickNextCard(state.cards, state.lastShownCardId ?? null);
 
   if (!current) {
     appEl.innerHTML = `
@@ -80,6 +92,7 @@ export function renderStudyScreen(appEl, state, deps) {
   const card = state.cards.find(c => c.id === current.id) ?? current;
   if (card) {
     markSeen(card);
+    state.lastShownCardId = card.id;
     deps.save();
   }
 
