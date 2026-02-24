@@ -6,6 +6,9 @@ import { renderFeedback } from "./study/feedback.js";
 import { renderClassesScreen } from "./classes/classes.js";
 import { getCurrentUser, clearSession } from "./authStore.js";
 import { renderAuthScreen } from "./auth.js";
+import { getSupabase } from "./supabaseClient.js";
+import { getUser, signOut, onAuthStateChange } from "./auth/auth.js";
+import { renderSupabaseAuthScreen } from "./auth/supabaseAuthScreen.js";
 import { startSession, endSession, recordAnswer, updateStageSnapshot } from "./analytics/analyticsStore.js";
 
 let state = null;
@@ -13,8 +16,20 @@ let currentUserId = null;
 
 const appEl = document.getElementById("app");
 
+/**
+ * Effective user: Supabase user when Supabase is configured, else local (authStore) user.
+ */
+async function getEffectiveUser() {
+  const supabase = await getSupabase();
+  if (supabase) {
+    const { data } = await getUser();
+    return data?.user ?? null;
+  }
+  return getCurrentUser();
+}
+
 async function loadUserState() {
-  const user = getCurrentUser();
+  const user = await getEffectiveUser();
   if (!user) {
     state = null;
     currentUserId = null;
@@ -61,95 +76,107 @@ function feedback(payload) {
   });
 }
 
-function renderNavigation(currentUser) {
+function renderNavigation(currentUser, isSupabase) {
   const header = document.querySelector(".header");
   if (!header) return;
-  
-  // Remove existing navigation elements if present
+
   const existingLogout = header.querySelector("#logoutBtn");
-  if (existingLogout) {
-    existingLogout.remove();
-  }
+  if (existingLogout) existingLogout.remove();
   const existingNav = header.querySelector("#navButtons");
-  if (existingNav) {
-    existingNav.remove();
-  }
-  
-  // Create navigation container
+  if (existingNav) existingNav.remove();
+  const existingAccount = header.querySelector("#accountBtn");
+  if (existingAccount) existingAccount.remove();
+
   const navContainer = document.createElement("div");
   navContainer.id = "navButtons";
-  navContainer.style.cssText = "margin-top:12px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap;";
-  
-  // Add Classes button for teachers and students
-  if (currentUser) {
-    const classesBtn = document.createElement("button");
-    classesBtn.textContent = "Classes";
-    classesBtn.className = "small";
-    classesBtn.style.cssText = "padding:6px 10px; font-size:12px;";
-    classesBtn.addEventListener("click", () => {
-      if (state) {
-        setScreen("classes");
-        save();
-        renderAll();
-      }
+  navContainer.style.cssText = "margin-top:12px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap; align-items:center;";
+
+  const classesBtn = document.createElement("button");
+  classesBtn.textContent = "Classes";
+  classesBtn.className = "small";
+  classesBtn.style.cssText = "padding:6px 10px; font-size:12px;";
+  classesBtn.addEventListener("click", () => {
+    if (state) {
+      setScreen("classes");
+      save();
+      renderAll();
+    }
+  });
+  navContainer.appendChild(classesBtn);
+
+  if (isSupabase && currentUser?.email) {
+    const emailSpan = document.createElement("span");
+    emailSpan.className = "small";
+    emailSpan.style.cssText = "font-size:12px; color:var(--muted, #666);";
+    emailSpan.textContent = currentUser.email;
+    navContainer.appendChild(emailSpan);
+    const accountBtn = document.createElement("button");
+    accountBtn.id = "accountBtn";
+    accountBtn.type = "button";
+    accountBtn.className = "small";
+    accountBtn.style.cssText = "padding:6px 10px; font-size:12px;";
+    accountBtn.textContent = "Account";
+    accountBtn.addEventListener("click", () => {
+      import("./auth/authUI.js").then((m) => m.openAuthPanel());
     });
-    navContainer.appendChild(classesBtn);
+    navContainer.appendChild(accountBtn);
   }
-  
-  // Add logout button
+
   const logoutBtn = document.createElement("button");
   logoutBtn.id = "logoutBtn";
-  logoutBtn.textContent = "Log out";
+  logoutBtn.textContent = isSupabase ? "Sign out" : "Log out";
   logoutBtn.className = "small";
   logoutBtn.style.cssText = "padding:6px 10px; font-size:12px;";
-  logoutBtn.addEventListener("click", () => {
-    clearSession();
+  logoutBtn.addEventListener("click", async () => {
+    if (isSupabase) {
+      await signOut();
+      await loadUserState();
+    } else {
+      clearSession();
+    }
     renderAll();
   });
   navContainer.appendChild(logoutBtn);
-  
+
   header.appendChild(navContainer);
 }
 
 let previousScreen = null;
 
 async function renderAll() {
-  const currentUser = getCurrentUser();
-  
-  // If not logged in, show auth screen
+  const supabaseConfigured = (await getSupabase()) != null;
+  const currentUser = supabaseConfigured ? ((await getUser()).data?.user ?? null) : getCurrentUser();
+
   if (!currentUser) {
-    // End any active session
     endSession();
-    
-    // Remove navigation elements if present
     const existingLogout = document.querySelector("#logoutBtn");
-    if (existingLogout) {
-      existingLogout.remove();
-    }
+    if (existingLogout) existingLogout.remove();
     const existingNav = document.querySelector("#navButtons");
-    if (existingNav) {
-      existingNav.remove();
-    }
-    
+    if (existingNav) existingNav.remove();
+    const existingAccount = document.querySelector("#accountBtn");
+    if (existingAccount) existingAccount.remove();
     state = null;
     currentUserId = null;
     previousScreen = null;
-    
-    renderAuthScreen(appEl, async () => {
-      await loadUserState();
-      renderAll();
-    });
+
+    if (supabaseConfigured) {
+      const isRecovery = /type=recovery/i.test(location.hash || "") || /#auth=reset/i.test(location.hash || "");
+      renderSupabaseAuthScreen(appEl, isRecovery ? { initialView: "setNewPassword" } : {});
+    } else {
+      renderAuthScreen(appEl, async () => {
+        await loadUserState();
+        renderAll();
+      });
+    }
     return;
   }
-  
-  // Check if user changed (switched accounts)
+
   if (currentUser.id !== currentUserId) {
     endSession();
     await loadUserState();
     previousScreen = null;
   }
-  
-  // Ensure state is loaded
+
   if (!state) {
     await loadUserState();
   }
@@ -186,8 +213,7 @@ async function renderAll() {
     }
   }
   
-  // User is logged in - show navigation
-  renderNavigation(currentUser);
+  renderNavigation(currentUser, supabaseConfigured);
   
   if (state.screen === "create") {
     renderCreateScreen(appEl, state, {
@@ -301,19 +327,14 @@ async function renderAll() {
   previousScreen = state.screen;
 }
 
-// Account button (Supabase auth panel) – always visible in header
-(function setupAccountButton() {
-  const header = document.querySelector(".header");
-  if (!header || document.getElementById("accountBtn")) return;
-  const btn = document.createElement("button");
-  btn.id = "accountBtn";
-  btn.type = "button";
-  btn.className = "small auth-account-btn";
-  btn.textContent = "Account";
-  btn.addEventListener("click", () => {
-    import("/src/auth/authUI.js").then((m) => m.openAuthPanel());
-  });
-  header.appendChild(btn);
+// Auth state listener: re-render on Supabase sign-in/sign-out
+(async () => {
+  const supabase = await getSupabase();
+  if (supabase) {
+    onAuthStateChange(() => {
+      renderAll();
+    });
+  }
 })();
 
 // Initialize on load (async so state is ready before first render)

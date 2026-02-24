@@ -115,20 +115,55 @@ When Supabase is configured and the user is signed in (Account → Sign in), dec
 ### 2. Verify as an authenticated user
 
 1. Run the schema (step 1).
-2. In the app: sign in via **Account** (Supabase auth).
+2. In the app: sign in (main screen when Supabase is configured; see Phase 4B).
 3. Create a deck (add cards and save). In Supabase **Table Editor**, check `decks` and `cards` for rows with your `user_id` (same as **Authentication** → **Users**).
 4. Optionally in SQL Editor (while signed in the app, same browser): use the anon key in a request or run a query as the service role to confirm rows exist for your user.
 
 ### 3. Test steps (Phase 4A)
 
 1. **Without Supabase config**  
-   Remove or empty `src/config.js` (or use a build without it). Serve the app (e.g. `python3 -m http.server`). Log in with local auth. Create/edit decks and cards. Everything works as before using localStorage only.
+   Remove or empty `src/config.js` (or use a build without it). Serve the app (e.g. `python3 -m http.server`). You will see the **local** sign-in screen (Create account / Sign in). Log in with local auth. Create/edit decks and cards. Everything works as before using localStorage only.
 
 2. **With Supabase configured but signed out**  
-   Add valid `src/config.js`. Do **not** sign in via Account. Log in with local auth. Create/edit decks and cards. Data stays in localStorage (no Supabase tables used).
+   Add valid `src/config.js`. You will see the **Supabase** sign-in screen (Sign in / Sign up, no local login). Sign in with Supabase. Data is stored in Supabase (decks/cards tables). Sign out via header "Sign out"; you see the Supabase sign-in screen again.
 
 3. **Signed in to Supabase**  
-   Sign in via **Account** (Supabase). Create a deck and at least one card, then save. In Supabase **Table Editor**, confirm a row in `decks` and one in `cards` for your user. Sign out from Account; confirm local data is separate (local decks/cards unchanged).
+   Sign in on the main screen. Create a deck and at least one card, then save. In Supabase **Table Editor**, confirm a row in `decks` and one in `cards` for your user. Sign out; confirm you see the sign-in screen again and local data (if any) is separate.
 
 4. **Sign out and local data**  
-   After using Supabase for data, sign out from Account. The app continues to use local auth; decks/cards are read from localStorage again. Local data was not overwritten by Supabase.
+   After using Supabase for data, sign out. The app shows the sign-in screen again. If you later use the app without Supabase config, local auth and localStorage are used; local data was not overwritten by Supabase.
+
+---
+
+## Phase 4B: Supabase as the only auth (when configured)
+
+When Supabase is configured, it is the **only** sign-in: the main screen shows Supabase sign-in/sign-up (and forgot password, OAuth). The legacy local auth screen is shown only when Supabase is **not** configured (e.g. development without config).
+
+### Behaviour
+
+- **Supabase configured**
+  - Not signed in → main content area shows **Supabase sign-in** (Sign in / Sign up tabs, Forgot password, Google/Microsoft).
+  - Signed in → app screens (Create, Study, Classes); header shows **Classes | your@email.com | Account | Sign out**. Sign out uses Supabase `signOut` and re-renders.
+  - Auth state changes (sign-in/sign-out) trigger a re-render via `onAuthStateChange`.
+- **Supabase not configured**
+  - Not signed in → main content area shows **local** sign-in (Create account / Sign in with email and role).
+  - Signed in → same app screens; header shows **Classes | Log out**. Log out clears local session.
+
+### Manual test steps (Phase 4B)
+
+1. **Supabase configured – one sign-in**
+   - Ensure `src/config.js` has valid URL and anon key. Serve the app (e.g. `python3 -m http.server`).
+   - Open the app. You should see **one** sign-in screen (Sign in / Sign up with Supabase). There is no separate "student login" or legacy form.
+   - Sign in with email/password or OAuth. Header shows **Classes | your@email.com | Account | Sign out**. Create a deck and a card; confirm they persist after refresh.
+   - Click **Sign out**. The main area shows the Supabase sign-in screen again. No duplicate sign-in UI.
+
+2. **Supabase configured – header**
+   - While signed in, confirm the header shows the current user email and a **Sign out** button. Optional **Account** opens the Account modal (profile / sign out / change password).
+   - After sign-out, confirm the header nav is gone and only the sign-in content is visible.
+
+3. **Supabase not configured – local fallback**
+   - Remove or empty `src/config.js` (or rename it). Reload the app.
+   - You should see the **local** sign-in screen (Create account / Sign in, with role selector). Sign in with a local account. Header shows **Classes | Log out**. App works with localStorage only. No crash, no "Supabase required" blocking.
+
+4. **Recovery / set new password**
+   - With Supabase configured, use "Forgot password?" and complete the email flow. After opening the reset link, the app should show a "Set new password" view (full-page or modal). Set a new password and sign in.
