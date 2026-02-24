@@ -13,16 +13,15 @@ let currentUserId = null;
 
 const appEl = document.getElementById("app");
 
-function loadUserState() {
+async function loadUserState() {
   const user = getCurrentUser();
   if (!user) {
     state = null;
     currentUserId = null;
     return;
   }
-  
   currentUserId = user.id;
-  state = loadStateForUser(currentUserId) ?? newStateForUser();
+  state = (await loadStateForUser(currentUserId)) ?? newStateForUser();
 }
 
 function setScreen(screen) {
@@ -30,14 +29,16 @@ function setScreen(screen) {
   state.screen = screen;
 }
 
-function save() {
-  if (!state || !currentUserId) return;
-  saveStateForUser(currentUserId, state);
+async function save() {
+  if (!state || !currentUserId) return undefined;
+  const updated = await saveStateForUser(currentUserId, state);
+  if (updated) state = updated;
+  return updated;
 }
 
-function setStateAndRender(nextState) {
+async function setStateAndRender(nextState) {
   state = nextState;
-  save();
+  await save();
   renderAll();
 }
 
@@ -112,7 +113,7 @@ function renderNavigation(currentUser) {
 
 let previousScreen = null;
 
-function renderAll() {
+async function renderAll() {
   const currentUser = getCurrentUser();
   
   // If not logged in, show auth screen
@@ -134,8 +135,8 @@ function renderAll() {
     currentUserId = null;
     previousScreen = null;
     
-    renderAuthScreen(appEl, () => {
-      loadUserState();
+    renderAuthScreen(appEl, async () => {
+      await loadUserState();
       renderAll();
     });
     return;
@@ -143,15 +144,14 @@ function renderAll() {
   
   // Check if user changed (switched accounts)
   if (currentUser.id !== currentUserId) {
-    // End session for previous user
     endSession();
-    loadUserState();
+    await loadUserState();
     previousScreen = null;
   }
   
   // Ensure state is loaded
   if (!state) {
-    loadUserState();
+    await loadUserState();
   }
   
   // Handle session lifecycle: end session when leaving study screens
@@ -316,9 +316,11 @@ function renderAll() {
   header.appendChild(btn);
 })();
 
-// Initialize on load
-loadUserState();
-renderAll();
+// Initialize on load (async so state is ready before first render)
+(async () => {
+  await loadUserState();
+  await renderAll();
+})();
 
 // If URL indicates Supabase recovery/password-reset redirect, open auth panel in "Set new password" mode
 import("/src/auth/auth.js")

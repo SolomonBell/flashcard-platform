@@ -95,3 +95,40 @@ The app calls Supabase OAuth with these provider IDs:
 - **Microsoft/Azure:** `"azure"` (Supabase’s provider name for Microsoft is `azure` in `signInWithOAuth({ provider: "azure" })`)
 
 If your Supabase or `supabase-js` version uses different names (e.g. `"microsoft"` instead of `"azure"`), change the provider string in `src/auth/authUI.js` where `signInWithOAuth("azure", ...)` is called.
+
+---
+
+## Phase 4A: Schema and datastore (decks + cards)
+
+When Supabase is configured and the user is signed in (Account → Sign in), decks and cards are stored in Supabase. Otherwise the app uses localStorage. RLS ensures each user sees only their own data.
+
+### 1. Run the schema in Supabase
+
+1. In Supabase Dashboard, go to **SQL Editor**.
+2. Open `supabase/schema.sql` from this repo (or copy its contents).
+3. Run the full script. It creates:
+   - **decks**: `id`, `user_id`, `title`, `created_at`, `updated_at`
+   - **cards**: `id`, `deck_id`, `user_id`, `front`, `back`, `kind`, `metadata` (jsonb), `created_at`, `updated_at`
+   - Indexes, `updated_at` triggers, **RLS enabled** on both tables, and policies so `auth.uid() = user_id` for SELECT/INSERT/UPDATE/DELETE.
+4. RLS is enabled and policies are created by the script; no extra step is required.
+
+### 2. Verify as an authenticated user
+
+1. Run the schema (step 1).
+2. In the app: sign in via **Account** (Supabase auth).
+3. Create a deck (add cards and save). In Supabase **Table Editor**, check `decks` and `cards` for rows with your `user_id` (same as **Authentication** → **Users**).
+4. Optionally in SQL Editor (while signed in the app, same browser): use the anon key in a request or run a query as the service role to confirm rows exist for your user.
+
+### 3. Test steps (Phase 4A)
+
+1. **Without Supabase config**  
+   Remove or empty `src/config.js` (or use a build without it). Serve the app (e.g. `python3 -m http.server`). Log in with local auth. Create/edit decks and cards. Everything works as before using localStorage only.
+
+2. **With Supabase configured but signed out**  
+   Add valid `src/config.js`. Do **not** sign in via Account. Log in with local auth. Create/edit decks and cards. Data stays in localStorage (no Supabase tables used).
+
+3. **Signed in to Supabase**  
+   Sign in via **Account** (Supabase). Create a deck and at least one card, then save. In Supabase **Table Editor**, confirm a row in `decks` and one in `cards` for your user. Sign out from Account; confirm local data is separate (local decks/cards unchanged).
+
+4. **Sign out and local data**  
+   After using Supabase for data, sign out from Account. The app continues to use local auth; decks/cards are read from localStorage again. Local data was not overwritten by Supabase.
