@@ -199,3 +199,52 @@ When Supabase is configured, it is the **only** sign-in: the main screen shows S
 3. **No duplicate auth listeners**
    - With Supabase configured, sign in and open DevTools. In the console, confirm there is no warning about multiple GoTrueClient instances.
    - Sign out and sign in again; the app should re-render once per auth change, without repeated or duplicate behavior.
+
+---
+
+## Phase 5A-1: Orgs, classes, and assigned decks (read-only for students)
+
+Teachers can assign decks to classes; students can study those decks directly (read-only) without copying. Schema and RLS only; minimal/no UI in this phase.
+
+### 1. Run the schema
+
+1. Ensure **Phase 4A** schema is applied (`supabase/schema.sql` — decks and cards tables exist).
+2. In Supabase Dashboard, open **SQL Editor**.
+3. Open `supabase/schema_orgs_classes.sql` from this repo and run the full script.
+
+It creates:
+
+- **organizations** – `id`, `name`, `created_by`, `created_at`; creator is auto-added as org admin via trigger.
+- **org_memberships** – `(org_id, user_id)` PK, `role` in `('admin','teacher')`; only org admins can add/remove.
+- **classes** – `id`, `org_id`, `name`, `created_by`; org admins/teachers manage.
+- **class_teachers** – which users teach which class.
+- **class_students** – which users are enrolled.
+- **class_deck_assignments** – which deck is assigned to which class (`(class_id, deck_id)` unique).
+
+RLS is enabled on all new tables. Existing **decks** and **cards** get **extra SELECT policies** so students can read decks/cards when the deck is assigned to a class they are in (owner-only INSERT/UPDATE/DELETE unchanged).
+
+**Views:**
+
+- **v_assigned_decks** – for `auth.uid()`: `deck_id`, `class_id`, `class_name`, `org_id`, `assigned_at` for classes they’re enrolled in.
+- **v_assigned_cards** – for `auth.uid()`: all card columns for cards in assigned decks (security_invoker, so RLS applies).
+
+### 2. Verify quickly
+
+1. **Create org and membership (Table Editor)**  
+   - **organizations**: insert one row (set `name`, `created_by` = your user UUID from Authentication → Users).  
+   - Trigger adds you to **org_memberships** as `admin`; confirm a row there.
+
+2. **Create class and add teacher/student**  
+   - **classes**: insert one row (`org_id`, `name`, `created_by` = your user id).  
+   - **class_teachers**: insert `(class_id, user_id)` for the class and your user (you as teacher).  
+   - **class_students**: insert `(class_id, user_id)` for the class and a **different** user (student). Use a second test user or the same for a quick check.
+
+3. **Assign a deck**  
+   - Create a deck (or use an existing one) owned by the teacher user.  
+   - **class_deck_assignments**: insert `(class_id, deck_id, assigned_by)` for that class and deck.
+
+4. **Confirm student read-only access**  
+   - Sign in as the **student** (or in SQL Editor run as that user if you have a way to set auth context).  
+   - Query `select * from v_assigned_decks` — should return the assigned deck row.  
+   - Query `select * from v_assigned_cards` — should return cards for that deck.  
+   - From the app (signed in as student), you can call `supabase.from('v_assigned_decks').select()` or `supabase.from('decks').select('*')` in the console; decks assigned to the student’s class should be visible. Students cannot INSERT/UPDATE/DELETE those decks/cards (only their own).
