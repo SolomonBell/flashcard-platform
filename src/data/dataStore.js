@@ -252,6 +252,8 @@ export async function getActiveStore() {
 
 /**
  * Run a store operation; on Supabase failure, run the same operation with localStore and warn.
+ * Returns the result of fn(store). On fallback to local, returns { value, fellBackToLocal: true }
+ * so the UI can show "Saved locally (sync failed)".
  */
 export async function withStoreFallback(operationName, fn) {
   const { store, isSupabase } = await getActiveStore();
@@ -260,7 +262,8 @@ export async function withStoreFallback(operationName, fn) {
   } catch (err) {
     if (isSupabase && store !== localStore) {
       console.warn(FALLBACK_WARN, operationName, err);
-      return await fn(localStore);
+      const localResult = await fn(localStore);
+      return { value: localResult, fellBackToLocal: true };
     }
     throw err;
   }

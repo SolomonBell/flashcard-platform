@@ -74,7 +74,7 @@ export async function loadStateForUser(userId) {
     }
   }
 
-  return withStoreFallback("loadState", async (s) => {
+  const raw = await withStoreFallback("loadState", async (s) => {
     migrateLegacyStateToUser(userId);
     const decks = await s.listDecks();
     let deckId;
@@ -95,6 +95,8 @@ export async function loadStateForUser(userId) {
       deckTitle,
     };
   }).catch(() => null);
+  if (raw?.fellBackToLocal) return raw.value ?? null;
+  return raw ?? null;
 }
 
 /**
@@ -110,10 +112,10 @@ export async function saveStateForUser(userId, state) {
   if (!isSupabase) {
     const userKey = getUserStorageKey(userId);
     localStorage.setItem(userKey, JSON.stringify(state));
-    return undefined;
+    return { updated: undefined };
   }
 
-  return withStoreFallback("saveState", async (store) => {
+  const raw = await withStoreFallback("saveState", async (store) => {
     const deckId = state.deckId;
     if (!deckId) return undefined;
 
@@ -136,7 +138,9 @@ export async function saveStateForUser(userId, state) {
       }
     }
     return { ...state, cards: updatedCards };
-  }).catch(() => undefined);
+  });
+  if (raw && raw.fellBackToLocal) return { updated: raw.value, fellBackToLocal: true };
+  return { updated: raw };
 }
 
 export function newStateForUser() {

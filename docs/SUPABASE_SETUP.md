@@ -167,3 +167,35 @@ When Supabase is configured, it is the **only** sign-in: the main screen shows S
 
 4. **Recovery / set new password**
    - With Supabase configured, use "Forgot password?" and complete the email flow. After opening the reset link, the app should show a "Set new password" view (full-page or modal). Set a new password and sign in.
+
+---
+
+## Phase 4C: Supabase polish (singleton client, save/sync status)
+
+### 4C-1: Singleton client and auth listener
+
+- The Supabase client is created **once per page load** in `src/supabaseClient.js` via a single init promise; concurrent `getSupabase()` calls receive the same client (no duplicate GoTrue instances).
+- The auth state listener (`onAuthStateChange`) is registered **once** in `main.js` so sign-in/sign-out does not cause duplicate subscriptions or repeated renders.
+
+### 4C-2: Save/sync status UI
+
+- A small status pill appears in the header (right side) when signed in:
+  - **Saving…** while a save is in progress
+  - **Saved** on success (auto-hides after ~1.5s)
+  - **Saved locally (sync failed)** when Supabase fails and the app falls back to localStorage
+  - **Error** (with short message) when save fails (e.g. local write error)
+- Idle state is hidden. Styling uses a small pill (see `style.css`).
+
+### Manual test steps (Phase 4C)
+
+1. **Normal save**
+   - Sign in (Supabase or local). Create or edit a card and trigger a save (e.g. edit and blur, or go to Study).
+   - You should see **Saving…** in the header, then **Saved**, then the pill disappears after about 1.5s.
+
+2. **Supabase failure → fallback**
+   - With Supabase configured and signed in, temporarily break the config (e.g. set `SUPABASE_ANON_KEY` to an invalid value in `src/config.js`), then save (edit a card or add one).
+   - You should see **Saving…**, then **Saved locally (sync failed)**. Console should show a fallback warning. Restore the valid key afterward.
+
+3. **No duplicate auth listeners**
+   - With Supabase configured, sign in and open DevTools. In the console, confirm there is no warning about multiple GoTrueClient instances.
+   - Sign out and sign in again; the app should re-render once per auth change, without repeated or duplicate behavior.

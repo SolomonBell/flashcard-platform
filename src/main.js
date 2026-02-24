@@ -16,6 +16,45 @@ let currentUserId = null;
 
 const appEl = document.getElementById("app");
 
+/** Timeout handle for clearing "Saved" after 1.5s */
+let savedHideTimeout = null;
+
+/**
+ * Set sync/save status in the header. Types: 'idle' (hidden), 'saving', 'saved', 'saved_locally', 'error'.
+ * @param {string} type
+ * @param {string} [message]
+ */
+function setSyncStatus(type, message) {
+  const header = document.querySelector(".header");
+  let wrap = header?.querySelector("#syncStatusContainer");
+  if (!header) return;
+  if (!wrap) {
+    wrap = document.createElement("div");
+    wrap.id = "syncStatusContainer";
+    wrap.className = "sync-status-wrap";
+  }
+  if (savedHideTimeout) {
+    clearTimeout(savedHideTimeout);
+    savedHideTimeout = null;
+  }
+  const text =
+    type === "saving" ? "Saving…" :
+    type === "saved" ? "Saved" :
+    type === "saved_locally" ? "Saved locally (sync failed)" :
+    type === "error" ? (message ? `Error: ${String(message).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}` : "Error") : "";
+  const visible = type !== "idle" && text;
+  wrap.innerHTML = visible
+    ? `<span class="sync-status-pill sync-status-${type}">${text}</span>`
+    : "";
+  wrap.style.display = visible ? "block" : "none";
+  if (type === "saved") {
+    savedHideTimeout = setTimeout(() => {
+      setSyncStatus("idle");
+      savedHideTimeout = null;
+    }, 1500);
+  }
+}
+
 /**
  * Effective user: Supabase user when Supabase is configured, else local (authStore) user.
  */
@@ -46,9 +85,18 @@ function setScreen(screen) {
 
 async function save() {
   if (!state || !currentUserId) return undefined;
-  const updated = await saveStateForUser(currentUserId, state);
-  if (updated) state = updated;
-  return updated;
+  setSyncStatus("saving");
+  try {
+    const result = await saveStateForUser(currentUserId, state);
+    if (result?.updated !== undefined) state = result.updated;
+    if (result?.fellBackToLocal) setSyncStatus("saved_locally");
+    else if (result?.updated !== undefined) setSyncStatus("saved");
+    else setSyncStatus("idle");
+    return result?.updated;
+  } catch (err) {
+    setSyncStatus("error", err?.message || "Save failed");
+    return undefined;
+  }
 }
 
 async function setStateAndRender(nextState) {
@@ -80,16 +128,17 @@ function renderNavigation(currentUser, isSupabase) {
   const header = document.querySelector(".header");
   if (!header) return;
 
-  const existingLogout = header.querySelector("#logoutBtn");
-  if (existingLogout) existingLogout.remove();
-  const existingNav = header.querySelector("#navButtons");
-  if (existingNav) existingNav.remove();
-  const existingAccount = header.querySelector("#accountBtn");
-  if (existingAccount) existingAccount.remove();
+  const existingRow = header.querySelector(".header-nav-row");
+  const existingSync = existingRow?.querySelector("#syncStatusContainer") ?? null;
+  if (existingRow) existingRow.remove();
 
   const navContainer = document.createElement("div");
   navContainer.id = "navButtons";
-  navContainer.style.cssText = "margin-top:12px; display:flex; gap:8px; justify-content:center; flex-wrap:wrap; align-items:center;";
+  navContainer.style.cssText = "display:flex; gap:8px; justify-content:center; flex-wrap:wrap; align-items:center;";
+
+  const syncStatusContainer = existingSync ?? document.createElement("div");
+  syncStatusContainer.id = "syncStatusContainer";
+  syncStatusContainer.className = "sync-status-wrap";
 
   const classesBtn = document.createElement("button");
   classesBtn.textContent = "Classes";
@@ -138,7 +187,12 @@ function renderNavigation(currentUser, isSupabase) {
   });
   navContainer.appendChild(logoutBtn);
 
-  header.appendChild(navContainer);
+  const row = document.createElement("div");
+  row.className = "header-nav-row";
+  row.style.cssText = "display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; margin-top:12px; gap:8px;";
+  row.appendChild(navContainer);
+  row.appendChild(syncStatusContainer);
+  header.appendChild(row);
 }
 
 let previousScreen = null;
@@ -327,10 +381,12 @@ async function renderAll() {
   previousScreen = state.screen;
 }
 
-// Auth state listener: re-render on Supabase sign-in/sign-out
+// Auth state listener: register once to avoid duplicate renders / multiple GoTrue subscriptions
+let authListenerRegistered = false;
 (async () => {
   const supabase = await getSupabase();
-  if (supabase) {
+  if (supabase && !authListenerRegistered) {
+    authListenerRegistered = true;
     onAuthStateChange(() => {
       renderAll();
     });

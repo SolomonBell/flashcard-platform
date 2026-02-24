@@ -113,6 +113,39 @@ body {
   font-size: 14px;
 }
 
+/* Save/sync status pill (header, right side) */
+.sync-status-wrap {
+  flex-shrink: 0;
+}
+
+.sync-status-pill {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.sync-status-pill.sync-status-saving {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.sync-status-pill.sync-status-saved {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.sync-status-pill.sync-status-saved_locally {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.sync-status-pill.sync-status-error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
 .app {
   max-width: 980px;
   margin: 0 auto;
