@@ -11,24 +11,13 @@ const STOPWORDS = new Set([
 function extractKeyPoints(text) {
   if (!text || !text.trim()) return [];
   
-  // Split by lines first (preserve line breaks)
-  const lines = text.split(/\n+/).map(l => l.trim()).filter(l => l.length > 0);
+  // Split by sentences, bullets, or lines
+  const sentences = text
+    .split(/[.!?]\s+|\n+|•|\*/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
   
-  // Then split each line by sentences, bullets, or markers
-  const points = [];
-  for (const line of lines) {
-    // Check if line starts with bullet markers
-    if (/^[•\-\*]\s+/.test(line)) {
-      points.push(line.replace(/^[•\-\*]\s+/, "").trim());
-    } else {
-      // Split by sentence endings
-      const sentences = line.split(/[.!?]\s+/).map(s => s.trim()).filter(s => s.length > 0);
-      points.push(...sentences);
-    }
-  }
-  
-  // Filter out trivial points (too short or just punctuation)
-  return points.filter(p => p.length > 10 || p.split(/\s+/).length > 2);
+  return sentences;
 }
 
 function extractKeywords(text) {
@@ -123,7 +112,7 @@ export function gradeLongAnswer({ promptFront, expectedAnswer, userAnswer, cardS
   const threshold = cardStage === 3 ? 0.85 : 0.70;
   const correct = score >= threshold;
   
-  // Generate feedback (1-3 short sentences, actionable)
+  // Generate feedback
   let feedback = "";
   const topMissing = missingPointsList.slice(0, 3);
   
@@ -131,19 +120,14 @@ export function gradeLongAnswer({ promptFront, expectedAnswer, userAnswer, cardS
     feedback = "Good answer! You covered the key concepts.";
   } else {
     if (topMissing.length > 0) {
-      // Build actionable feedback
-      const firstMissing = topMissing[0];
-      if (topMissing.length === 1) {
-        feedback = `Your answer is missing: ${firstMissing}. Include this concept in your response.`;
-      } else if (topMissing.length === 2) {
-        feedback = `Your answer is missing: ${firstMissing}. Also consider: ${topMissing[1]}.`;
-      } else {
-        feedback = `Your answer is missing several key points. Focus on: ${firstMissing}. Also include: ${topMissing[1]}.`;
+      feedback = `Missing key points: ${topMissing[0]}`;
+      if (topMissing.length > 1) {
+        feedback += ` Also consider: ${topMissing[1]}`;
       }
     } else if (score < 0.5) {
-      feedback = "Your answer doesn't cover enough of the expected content. Review the material and include more key concepts.";
+      feedback = "Your answer doesn't cover enough of the expected content. Try to include more key concepts from the material.";
     } else {
-      feedback = "Your answer is close but missing some important details. Review the key concepts and try to be more comprehensive.";
+      feedback = "Your answer is close but missing some important details. Review the key concepts.";
     }
   }
   
@@ -151,7 +135,6 @@ export function gradeLongAnswer({ promptFront, expectedAnswer, userAnswer, cardS
     correct,
     score: Math.round(score * 100) / 100, // Round to 2 decimals
     missingPoints: topMissing,
-    matchedPoints: matchedPoints, // Optional, for future use
     incorrectClaims: [], // Keep empty for now
     feedback,
   };

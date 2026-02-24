@@ -128,19 +128,6 @@ export function renderRecall(appEl, state, current, deps) {
                           lastResult.aiFeedback
                         )}</pre>
                       </div>
-                      ${
-                        lastResult.missingPoints && lastResult.missingPoints.length > 0
-                          ? `
-                            <div style="margin-top:10px;">
-                              ${lastResult.missingPoints.map((point, idx) => `
-                                <p class="help" style="text-align:left; margin:${idx === 0 ? '10px' : '6px'} 0 0; font-size:12px;">
-                                  • ${escapeHtml(point)}
-                                </p>
-                              `).join("")}
-                            </div>
-                          `
-                          : ""
-                      }
                     `
                     : ""
                 }
@@ -187,7 +174,6 @@ export function renderRecall(appEl, state, current, deps) {
         const correctAnswer = String(current.back ?? "").trim();
         let isCorrect;
         let aiFeedback = null;
-        let missingPoints = null;
 
         if (c.longAnswer) {
           // Use AI grader for long answer cards
@@ -199,7 +185,6 @@ export function renderRecall(appEl, state, current, deps) {
           });
           isCorrect = graderResult.correct;
           aiFeedback = graderResult.feedback;
-          missingPoints = graderResult.missingPoints;
         } else {
           // Use exact match for normal cards
           isCorrect = normalize(userAnswer) === normalize(correctAnswer);
@@ -211,13 +196,7 @@ export function renderRecall(appEl, state, current, deps) {
         // Record answer in analytics (use grader.correct for longAnswer cards)
         recordAnswer({ isCorrect });
 
-        lastResult = { 
-          isCorrect, 
-          userAnswer, 
-          correctAnswer, 
-          aiFeedback,
-          missingPoints,
-        };
+        lastResult = { isCorrect, userAnswer, correctAnswer, aiFeedback };
         step = "result";
         render();
       });
