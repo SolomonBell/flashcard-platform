@@ -16,8 +16,76 @@ body {
 }
 
 .header {
+  position: relative;
   padding: 24px 20px 8px;
   border-bottom: 1px solid var(--border);
+}
+
+.auth-account-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+
+/* Auth panel overlay and modal */
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.auth-panel {
+  max-width: 400px;
+  width: 100%;
+  max-height: 90vh;
+  overflow: auto;
+}
+
+.auth-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.auth-tab {
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.auth-tab.active {
+  background: var(--text);
+  color: var(--card);
+  border-color: var(--text);
+}
+
+.auth-status {
+  font-size: 13px;
+  padding: 8px;
+  border-radius: 8px;
+}
+
+.auth-status.auth-status-error {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  color: #dc2626;
+}
+
+.auth-status.auth-status-success {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #16a34a;
+}
+
+.auth-unavailable code {
+  font-size: 12px;
+  background: #f3f4f6;
+  padding: 2px 6px;
+  border-radius: 4px;
 }
 
 .header h1 {
@@ -51,7 +119,10 @@ body {
   margin-bottom: 6px;
 }
 
-input[type="text"], textarea {
+input[type="text"],
+input[type="email"],
+input[type="password"],
+textarea {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border);

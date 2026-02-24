@@ -301,6 +301,21 @@ function renderAll() {
   previousScreen = state.screen;
 }
 
+// Account button (Supabase auth panel) – always visible in header
+(function setupAccountButton() {
+  const header = document.querySelector(".header");
+  if (!header || document.getElementById("accountBtn")) return;
+  const btn = document.createElement("button");
+  btn.id = "accountBtn";
+  btn.type = "button";
+  btn.className = "small auth-account-btn";
+  btn.textContent = "Account";
+  btn.addEventListener("click", () => {
+    import("./auth/authUI.js").then((m) => m.openAuthPanel());
+  });
+  header.appendChild(btn);
+})();
+
 // Initialize on load
 loadUserState();
 renderAll();
