@@ -3,7 +3,6 @@ import { renderProgressBar } from "./progress.js";
 import { renderCreateScreen } from "./create/create.js";
 import { renderStudyScreen } from "./study/study.js";
 import { renderFeedback } from "./study/feedback.js";
-import { renderClassesScreen } from "./classes/classes.js";
 import { getCurrentUser, clearSession } from "./authStore.js";
 import { renderAuthScreen } from "./auth.js";
 import { getSupabase } from "./supabaseClient.js";
@@ -277,13 +276,14 @@ async function renderAll() {
       resetAll: () => resetAllForUser(currentUserId, setStateAndRender),
     });
   } else if (state.screen === "classes") {
-    renderClassesScreen(appEl, {
-      currentUser,
-      state,
-      setScreen,
-      save,
-      renderAll,
-    });
+    const { renderClassesScreen } = await import("./screens/classesScreen.js");
+    const startAssignedDeckStudy = ({ deckId, cards }) => {
+      state.cards = cards;
+      state.deckId = deckId;
+      state.screen = "study";
+      renderAll();
+    };
+    await renderClassesScreen(appEl, { setScreen, renderAll, startAssignedDeckStudy });
   } else if (state.screen === "sharedStudy") {
     // Handle shared deck study
     import("./classes/sharedDecksStore.js").then(({ getSharedDeckById, getSharedDeckProgress, saveSharedDeckProgress }) => {

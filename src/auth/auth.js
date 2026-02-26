@@ -51,11 +51,13 @@ export async function signOut() {
   return supabase.auth.signOut();
 }
 
-export async function requestPasswordReset(email, redirectTo) {
+export async function requestPasswordReset(email, _redirectTo) {
   const supabase = await getSupabase();
   if (!supabase) return { data: null, error: notConfigured() };
-  const url = redirectTo || getDefaultRedirectTo();
-  return supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo: url });
+  const url = typeof window !== "undefined" && window.location ? window.location.origin + "/" : getDefaultRedirectTo();
+  const result = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo: url });
+  if (typeof window !== "undefined") console.log("[reset] sent with redirectTo", url);
+  return result;
 }
 
 export async function updatePassword(newPassword) {
@@ -135,9 +137,8 @@ export async function maybeHandleAuthRedirect() {
   try {
     const { openAuthPanel } = await import("/src/auth/authUI.js");
     await openAuthPanel({ initialView: "setNewPassword" });
-    if (typeof window !== "undefined" && window.history?.replaceState) {
-      window.history.replaceState(null, "", window.location.pathname + window.location.search);
-    }
+    // Do NOT clear URL here: recovery code/tokens are in query or hash and are needed for ensureRecoverySession + updateUser.
+    // URL is cleared only after successful password update (see supabaseAuthScreen.js).
     return { handled: true };
   } catch (_) {
     return { handled: false };

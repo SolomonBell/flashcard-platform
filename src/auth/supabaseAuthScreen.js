@@ -3,6 +3,7 @@
  * Renders into appEl when Supabase is configured and user is not signed in.
  */
 
+import { getSupabase } from "../supabaseClient.js";
 import * as auth from "./auth.js";
 
 function escapeHtml(str) {
@@ -11,6 +12,41 @@ function escapeHtml(str) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+/**
+ * Exchange recovery code or hash tokens into a session so updateUser works.
+ * Returns { supabase, session } or { supabase, session: null }.
+ */
+async function ensureRecoverySession() {
+  const supabase = await getSupabase();
+  if (!supabase) return { supabase: null, session: null };
+
+  const url = window.location.href;
+  const hasCode = /\?.*\bcode=/.test(url);
+  const hash = (window.location.hash || "").slice(1);
+  const hashParams = new URLSearchParams(hash);
+  const accessToken = hashParams.get("access_token");
+  const refreshToken = hashParams.get("refresh_token");
+
+  if (hasCode) {
+    const { error } = await supabase.auth.exchangeCodeForSession(url);
+    if (error) {
+      console.warn("exchangeCodeForSession failed", error);
+      const { data } = await supabase.auth.getSession();
+      return { supabase, session: data?.session ?? null };
+    }
+  } else if (accessToken && refreshToken) {
+    const { error } = await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+    if (error) {
+      console.warn("setSession failed", error);
+      const { data } = await supabase.auth.getSession();
+      return { supabase, session: data?.session ?? null };
+    }
+  }
+
+  const { data } = await supabase.auth.getSession();
+  return { supabase, session: data?.session ?? null };
 }
 
 /**
@@ -27,11 +63,25 @@ export function renderSupabaseAuthScreen(appEl, options = {}) {
 
   function render() {
     if (view === "setNewPassword") {
+      // Debug: log recovery URL contents once per render
+      const search = typeof window !== "undefined" ? window.location.search : "";
+      const hash = typeof window !== "undefined" ? window.location.hash || "" : "";
+      const searchParams = new URLSearchParams(search);
+      const hashParams = new URLSearchParams(hash.replace(/^#/, ""));
+      console.log("[recovery] href", typeof window !== "undefined" ? window.location.href : "");
+      console.log("[recovery] search", search);
+      console.log("[recovery] hash", hash);
+      console.log("[recovery] hasCode", searchParams.has("code"));
+      console.log("[recovery] hashParams", Object.fromEntries(hashParams));
+      const codePresent = searchParams.has("code") ? "present" : "missing";
+      const accessTokenPresent = hashParams.has("access_token") ? "present" : "missing";
+
       appEl.innerHTML = `
         <div style="display:flex; justify-content:center; width:100%;">
           <section class="card" style="max-width:400px; width:100%;">
             <h2 style="margin:0; text-align:center;">Set new password</h2>
             ${statusMessage ? `<div class="auth-status auth-status-${statusType}" style="margin-top:12px;">${escapeHtml(statusMessage)}</div>` : ""}
+            <div class="help" style="margin-top:8px; font-size:11px; color:var(--muted,#666);">Debug: code=${escapeHtml(codePresent)}, access_token=${escapeHtml(accessTokenPresent)}</div>
             <form id="authSetPasswordForm" style="margin-top:16px;">
               <label class="label" for="authNewPassword">New password</label>
               <input type="password" id="authNewPassword" name="newPassword" required style="margin-bottom:12px;" />
@@ -56,11 +106,22 @@ export function renderSupabaseAuthScreen(appEl, options = {}) {
           render();
           return;
         }
-        const { error } = await auth.updatePassword(newP);
+        const { supabase, session } = await ensureRecoverySession();
+        console.log("recovery session?", !!session);
+        if (!session || !supabase) {
+          statusMessage = "Recovery link expired. Please request a new reset email.";
+          statusType = "error";
+          render();
+          return;
+        }
+        const { error } = await supabase.auth.updateUser({ password: newP });
         if (error) {
           statusMessage = error.message ?? "Update failed";
           statusType = "error";
         } else {
+          if (typeof window !== "undefined" && window.history?.replaceState) {
+            window.history.replaceState({}, document.title, window.location.pathname || "/");
+          }
           statusMessage = "Password updated. You can sign in now.";
           statusType = "success";
           view = "main";

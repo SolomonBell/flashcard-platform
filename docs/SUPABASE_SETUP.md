@@ -72,7 +72,11 @@ Or from the app code you can:
 3. Use the exact origin + path where the app is served. The app uses `window.location.origin + pathname` plus a hash marker (e.g. `#auth=callback`) for OAuth and password-reset callbacks.
 4. Save.
 
-### 2. Enable Google and Microsoft (OAuth) providers
+### 2. Reset password email template (so the link includes recovery credentials)
+
+In Supabase go to **Authentication** → **Email Templates** → **Reset password**. The link in the email must use **`{{ .ConfirmationURL }}`** (so the user is sent to your site with `?code=...` or `#access_token=...` in the URL). Do **not** use `{{ .SiteURL }}` alone for the link, or the recovery code/tokens will not be present and “Set new password” will fail. This is a dashboard setting; app code cannot fix it.
+
+### 3. Enable Google and Microsoft (OAuth) providers
 
 1. Go to **Authentication** → **Providers** in the Supabase Dashboard.
 2. **Google**
@@ -87,7 +91,7 @@ Or from the app code you can:
    - Create a client secret; copy **Application (client) ID** and **Client secret** into Supabase Microsoft provider settings.
 4. Save each provider.
 
-### 3. Provider names used in code
+### 4. Provider names used in code
 
 The app calls Supabase OAuth with these provider IDs:
 
