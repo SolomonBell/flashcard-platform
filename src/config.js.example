@@ -1,8 +1,0 @@
-/**
- * Supabase configuration.
- * Copy this file to config.js and fill in your project values.
- * Do not commit config.js (it is in .gitignore).
- */
-
-export const SUPABASE_URL = "https://YOUR_PROJECT.supabase.co";
-export const SUPABASE_ANON_KEY = "YOUR_ANON_KEY";

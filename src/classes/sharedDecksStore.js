@@ -1,3 +1,5 @@
+import { getClassesStore } from "./classesSupabaseStore.js";
+
 export const STORAGE_SHARED_DECKS_KEY = "knowit_shared_decks_v1";
 export const STORAGE_SHARED_PROGRESS_KEY = "knowit_shared_deck_progress_v1";
 
@@ -103,28 +105,42 @@ export function saveSharedProgress(progress) {
   localStorage.setItem(STORAGE_SHARED_PROGRESS_KEY, JSON.stringify(progress));
 }
 
-export function getSharedDeckProgress(sharedDeckId, studentId) {
-  const progress = loadSharedProgress();
-  return progress.find(p => p.sharedDeckId === sharedDeckId && p.studentId === studentId) || null;
+export async function getSharedDeckProgress(sharedDeckId, studentId) {
+  try {
+    const store = await getClassesStore();
+    return await store.getSharedDeckProgress(sharedDeckId);
+  } catch {
+    const progress = loadSharedProgress();
+    return progress.find(p => p.sharedDeckId === sharedDeckId && p.studentId === studentId) || null;
+  }
 }
 
-export function saveSharedDeckProgress(sharedDeckId, studentId, cards) {
+export async function saveSharedDeckProgress(sharedDeckId, studentId, cards) {
+  try {
+    const store = await getClassesStore();
+    await store.saveSharedDeckProgress(sharedDeckId, cards);
+  } catch {
+    _saveSharedDeckProgressLocal(sharedDeckId, studentId, cards);
+  }
+}
+
+function _saveSharedDeckProgressLocal(sharedDeckId, studentId, cards) {
   const progress = loadSharedProgress();
   const index = progress.findIndex(p => p.sharedDeckId === sharedDeckId && p.studentId === studentId);
-  
+
   const progressEntry = {
     sharedDeckId,
     studentId,
     cards: JSON.parse(JSON.stringify(cards)), // deep copy
     lastStudiedAt: Date.now(),
   };
-  
+
   if (index === -1) {
     progress.push(progressEntry);
   } else {
     progress[index] = progressEntry;
   }
-  
+
   saveSharedProgress(progress);
 }
 

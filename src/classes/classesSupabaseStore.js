@@ -145,5 +145,37 @@ export async function getClassesStore() {
       if (error) throw error;
       return data;
     },
+
+    async getSharedDeckProgress(sharedDeckId) {
+      const { data, error } = await supabase
+        .from("shared_deck_progress")
+        .select("cards, last_studied_at")
+        .eq("shared_deck_id", sharedDeckId)
+        .eq("student_id", userId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return null;
+      return {
+        sharedDeckId,
+        studentId: userId,
+        cards: data.cards ?? [],
+        lastStudiedAt: data.last_studied_at ? new Date(data.last_studied_at).getTime() : null,
+      };
+    },
+
+    async saveSharedDeckProgress(sharedDeckId, cards) {
+      const { error } = await supabase
+        .from("shared_deck_progress")
+        .upsert(
+          {
+            shared_deck_id: sharedDeckId,
+            student_id: userId,
+            cards,
+            last_studied_at: new Date().toISOString(),
+          },
+          { onConflict: "shared_deck_id,student_id" }
+        );
+      if (error) throw error;
+    },
   };
 }

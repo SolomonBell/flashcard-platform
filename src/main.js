@@ -286,7 +286,7 @@ async function renderAll() {
     await renderClassesScreen(appEl, { setScreen, renderAll, startAssignedDeckStudy });
   } else if (state.screen === "sharedStudy") {
     // Handle shared deck study
-    import("./classes/sharedDecksStore.js").then(({ getSharedDeckById, getSharedDeckProgress, saveSharedDeckProgress }) => {
+    import("./classes/sharedDecksStore.js").then(async ({ getSharedDeckById, getSharedDeckProgress, saveSharedDeckProgress }) => {
       const sharedDeck = getSharedDeckById(state.sharedDeckId);
       if (!sharedDeck) {
         // Shared deck not found, go back to classes
@@ -298,7 +298,7 @@ async function renderAll() {
       }
 
       // Load or create student progress
-      let progress = getSharedDeckProgress(state.sharedDeckId, currentUser.id);
+      let progress = await getSharedDeckProgress(state.sharedDeckId, currentUser.id);
       if (!progress) {
         // Create initial progress from shared deck snapshot
         const initialCards = sharedDeck.deckSnapshot.cards.map(c => ({
@@ -307,7 +307,7 @@ async function renderAll() {
           stage3Mastered: false,
           lastSeenAt: null,
         }));
-        saveSharedDeckProgress(state.sharedDeckId, currentUser.id, initialCards);
+        await saveSharedDeckProgress(state.sharedDeckId, currentUser.id, initialCards);
         progress = { cards: initialCards };
       }
 
@@ -319,8 +319,8 @@ async function renderAll() {
       };
 
       // Custom save function for shared deck progress
-      const sharedSave = () => {
-        saveSharedDeckProgress(state.sharedDeckId, currentUser.id, sharedState.cards);
+      const sharedSave = async () => {
+        await saveSharedDeckProgress(state.sharedDeckId, currentUser.id, sharedState.cards);
         // Update stage snapshot after save
         updateStageSnapshot({ cards: sharedState.cards });
       };
@@ -400,7 +400,7 @@ let authListenerRegistered = false;
 })();
 
 // If URL indicates Supabase recovery/password-reset redirect, open auth panel in "Set new password" mode
-import("/src/auth/auth.js")
+import("./auth/auth.js")
   .then((m) => m.maybeHandleAuthRedirect())
   .catch(() => {});
 

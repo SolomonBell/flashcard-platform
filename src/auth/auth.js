@@ -135,7 +135,7 @@ export async function maybeHandleAuthRedirect() {
   if (!supabase) return { handled: false };
 
   try {
-    const { openAuthPanel } = await import("/src/auth/authUI.js");
+    const { openAuthPanel } = await import("./authUI.js");
     await openAuthPanel({ initialView: "setNewPassword" });
     // Do NOT clear URL here: recovery code/tokens are in query or hash and are needed for ensureRecoverySession + updateUser.
     // URL is cleared only after successful password update (see supabaseAuthScreen.js).

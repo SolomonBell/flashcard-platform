@@ -1,4 +1,5 @@
 import { buildMCOptions } from "./study.js";
+import { escapeHtml } from "../utils.js";
 
 export function renderLearn(appEl, state, current, deps) {
   const progress = deps.renderProgressBar(state);
@@ -18,7 +19,7 @@ export function renderLearn(appEl, state, current, deps) {
           margin:12px 0 18px;
         "
       >
-        ${current.front}
+        ${escapeHtml(current.front ?? "")}
       </div>
 
       <p class="help" style="text-align:left; margin-bottom:10px;">
