@@ -1,26 +1,26 @@
-import { getClassesByTeacher } from "../classes/classesStore.js";
-import { getSharedDecksByClass } from "../classes/sharedDecksStore.js";
+import { getClassesByTeacher, getSharedDecksByClass } from "../data/store/index.js";
 import { escapeHtml } from "../utils.js";
 
 // ── Data functions (replaceable with Supabase later) ──────────────────────
 
-function buildAnalyticsViewModel(teacherId) {
-  const classes = getClassesByTeacher(teacherId);
-  return classes.map(cls => ({
+async function buildAnalyticsViewModel(teacherId) {
+  const classes = await getClassesByTeacher(teacherId);
+  return Promise.all(classes.map(async cls => ({
     id: cls.id,
     name: cls.name,
     totalStudents: cls.studentIds.length,
-    sharedDecksCount: getSharedDecksByClass(cls.id).length,
+    sharedDecksCount: (await getSharedDecksByClass(cls.id)).length,
     students: cls.studentIds,
-  }));
+  })));
 }
 
 /**
  * Returns shared decks for a class as { id, name, cards[] }.
  * Replace with Supabase query when ready.
  */
-function listSharedDecksForClass(classId) {
-  return getSharedDecksByClass(classId).map(sd => ({
+async function listSharedDecksForClass(classId) {
+  const sharedDecks = await getSharedDecksByClass(classId);
+  return sharedDecks.map(sd => ({
     id: sd.id,
     name: sd.deckSnapshot?.deckName || "Unnamed Deck",
     cards: sd.deckSnapshot?.cards ?? [],
@@ -91,8 +91,8 @@ function getDisplayStudents({ students, counts, days }) {
  * @param {{ classId: string, deckId: string, scope?: { type: "class" } | { type: "student", email: string } }}
  * @returns {{ cardId, front, attempts, correct, accuracy }[]}
  */
-function getCardAccuracyStats({ classId, deckId, scope }) {
-  const sharedDecks = getSharedDecksByClass(classId);
+async function getCardAccuracyStats({ classId, deckId, scope }) {
+  const sharedDecks = await getSharedDecksByClass(classId);
   const sd = sharedDecks.find(d => d.id === deckId);
   if (!sd) return [];
 
@@ -212,12 +212,12 @@ export function renderAnalyticsScreen(appEl, { currentUserId }) {
   let cardSortAsc = false;     // false = hardest first
   let selectedScope = "class"; // "class" or a student email
 
-  function render() {
-    const viewModel = buildAnalyticsViewModel(currentUserId);
+  async function render() {
+    const viewModel = await buildAnalyticsViewModel(currentUserId);
     const cls = viewModel[selectedClassIndex] ?? null;
 
     // Shared decks for the selected class
-    const sharedDecks = cls ? listSharedDecksForClass(cls.id) : [];
+    const sharedDecks = cls ? await listSharedDecksForClass(cls.id) : [];
 
     // Default selectedDeckId to first deck when class changes or deck removed
     if (cls && sharedDecks.length > 0) {
@@ -248,7 +248,7 @@ export function renderAnalyticsScreen(appEl, { currentUserId }) {
         const scope = selectedScope === "class"
           ? { type: "class" }
           : { type: "student", email: selectedScope };
-        const stats = getCardAccuracyStats({ classId: cls.id, deckId: selectedDeckId, scope });
+        const stats = await getCardAccuracyStats({ classId: cls.id, deckId: selectedDeckId, scope });
         const sorted = [...stats].sort((a, b) =>
           cardSortAsc
             ? (b.accuracy ?? -1) - (a.accuracy ?? -1)

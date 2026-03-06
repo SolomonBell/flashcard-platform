@@ -6,6 +6,7 @@
  *   knowit_deck_v1_{userId}_{deckId}  → { id, title, cards, lastShownCardId }
  *   knowit_active_deck_v1_{userId}    → deckId string
  */
+import { mapDeck } from "./mappers.js";
 
 function indexKey(userId) { return `knowit_decks_v1_${userId}`; }
 function dataKey(userId, deckId) { return `knowit_deck_v1_${userId}_${deckId}`; }
@@ -32,7 +33,7 @@ function normalizeCards(cards) {
 }
 
 export function listDecks(userId) {
-  return loadIndex(userId);
+  return loadIndex(userId).map(mapDeck);
 }
 
 export function createDeck(userId, title = "New Deck") {
@@ -54,7 +55,8 @@ export function getDeck(userId, deckId) {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     parsed.cards = normalizeCards(parsed.cards);
-    return parsed;
+    // Map top-level fields; preserve cards and lastShownCardId unchanged
+    return { ...mapDeck(parsed), cards: parsed.cards, lastShownCardId: parsed.lastShownCardId };
   } catch { return null; }
 }
 

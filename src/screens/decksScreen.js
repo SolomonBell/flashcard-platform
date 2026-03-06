@@ -1,11 +1,11 @@
 import {
   listDecks, createDeck, getDeck, renameDeck, duplicateDeck, deleteDeck, setActiveDeckId,
-} from "../data/deckStore.js";
+} from "../data/store/index.js";
 import { escapeHtml } from "../utils.js";
 
 export function renderDecksScreen(appEl, { renderAll, state, currentUserId }) {
-  function render() {
-    const decks = listDecks(currentUserId);
+  async function render() {
+    const decks = await listDecks(currentUserId);
 
     appEl.innerHTML = `
       <section class="card" style="max-width:520px; margin:0 auto;">
@@ -47,12 +47,12 @@ export function renderDecksScreen(appEl, { renderAll, state, currentUserId }) {
       </section>
     `;
 
-    appEl.querySelector("#createDeckBtn")?.addEventListener("click", () => {
+    appEl.querySelector("#createDeckBtn")?.addEventListener("click", async () => {
       const input = appEl.querySelector("#newDeckTitle");
       const title = input?.value?.trim() || "New Deck";
-      const newId = createDeck(currentUserId, title);
+      const newId = await createDeck(currentUserId, title);
       if (input) input.value = "";
-      openDeck(newId);
+      await openDeck(newId);
     });
 
     // Enter key in title input also creates deck
@@ -60,36 +60,36 @@ export function renderDecksScreen(appEl, { renderAll, state, currentUserId }) {
       if (e.key === "Enter") appEl.querySelector("#createDeckBtn")?.click();
     });
 
-    appEl.querySelector("#decksList")?.addEventListener("click", (e) => {
+    appEl.querySelector("#decksList")?.addEventListener("click", async (e) => {
       const openId = e.target?.getAttribute("data-open-deck");
-      if (openId) { openDeck(openId); return; }
+      if (openId) { await openDeck(openId); return; }
 
       const renameId = e.target?.getAttribute("data-rename-deck");
       if (renameId) {
         const current = e.target?.getAttribute("data-deck-title") || "";
         const newTitle = prompt("New deck name:", current);
-        if (newTitle?.trim()) { renameDeck(currentUserId, renameId, newTitle.trim()); render(); }
+        if (newTitle?.trim()) { await renameDeck(currentUserId, renameId, newTitle.trim()); await render(); }
         return;
       }
 
       const dupId = e.target?.getAttribute("data-duplicate-deck");
-      if (dupId) { duplicateDeck(currentUserId, dupId); render(); return; }
+      if (dupId) { await duplicateDeck(currentUserId, dupId); await render(); return; }
 
       const deleteId = e.target?.getAttribute("data-delete-deck");
       if (deleteId) {
         const title = e.target?.getAttribute("data-deck-title") || "this deck";
         if (confirm(`Delete "${title}"? This cannot be undone.`)) {
-          deleteDeck(currentUserId, deleteId);
-          render();
+          await deleteDeck(currentUserId, deleteId);
+          await render();
         }
         return;
       }
     });
   }
 
-  function openDeck(deckId) {
-    setActiveDeckId(currentUserId, deckId);
-    const deck = getDeck(currentUserId, deckId);
+  async function openDeck(deckId) {
+    await setActiveDeckId(currentUserId, deckId);
+    const deck = await getDeck(currentUserId, deckId);
     state.screen = "create";
     state.deckId = deckId;
     state.deckTitle = deck?.title || "My Deck";

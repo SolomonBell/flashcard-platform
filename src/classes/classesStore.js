@@ -1,3 +1,5 @@
+import { mapClass } from "../data/mappers.js";
+
 export const STORAGE_CLASSES_KEY = "knowit_classes_v1";
 
 export function loadClasses() {
@@ -16,17 +18,17 @@ export function saveClasses(classes) {
 
 export function getClassesByTeacher(teacherId) {
   const classes = loadClasses();
-  return classes.filter(c => c.teacherId === teacherId);
+  return classes.filter(c => c.teacherId === teacherId).map(mapClass);
 }
 
 export function getClassesByStudent(studentId) {
   const classes = loadClasses();
-  return classes.filter(c => c.studentIds && c.studentIds.includes(studentId));
+  return classes.filter(c => c.studentIds && c.studentIds.includes(studentId)).map(mapClass);
 }
 
 export function getClassById(classId) {
   const classes = loadClasses();
-  return classes.find(c => c.id === classId) || null;
+  return mapClass(classes.find(c => c.id === classId) || null);
 }
 
 export function createClass(teacherId, name, allowedDomains) {
@@ -42,7 +44,7 @@ export function createClass(teacherId, name, allowedDomains) {
   };
   classes.push(newClass);
   saveClasses(classes);
-  return newClass;
+  return mapClass(newClass);
 }
 
 export function updateClass(classId, updates) {
@@ -52,7 +54,7 @@ export function updateClass(classId, updates) {
   
   classes[index] = { ...classes[index], ...updates };
   saveClasses(classes);
-  return classes[index];
+  return mapClass(classes[index]);
 }
 
 export function deleteClass(classId) {

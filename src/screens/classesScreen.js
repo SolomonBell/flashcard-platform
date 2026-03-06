@@ -4,20 +4,18 @@
  * Students: view enrolled classes and study shared decks.
  */
 
-import { getCurrentUser } from "../authStore.js";
 import {
+  getCurrentUser,
   getClassesByTeacher, getClassesByStudent,
   createClass, addStudentToClass, removeStudentFromClass,
-} from "../classes/classesStore.js";
-import {
   getSharedDecksByClass, shareDeckToClass,
   deleteSharedDeck, getSharedDeckById,
-} from "../classes/sharedDecksStore.js";
-import { listDecks, getDeck } from "../data/deckStore.js";
+  listDecks, getDeck,
+} from "../data/store/index.js";
 import { escapeHtml } from "../utils.js";
 
 export async function renderClassesScreen(appEl, { setScreen, renderAll, state }) {
-  const currentUser = getCurrentUser();
+  const currentUser = await getCurrentUser();
   if (!currentUser) return;
 
   const isTeacher = currentUser.role === "teacher";
@@ -29,17 +27,23 @@ export async function renderClassesScreen(appEl, { setScreen, renderAll, state }
     messageType = type || "success";
   }
 
-  function render() {
+  async function render() {
     if (isTeacher) {
-      renderTeacher();
+      await renderTeacher();
     } else {
-      renderStudent();
+      await renderStudent();
     }
   }
 
-  function renderTeacher() {
-    const myClasses = getClassesByTeacher(currentUser.id);
-    const myDecks = listDecks(currentUser.id);
+  async function renderTeacher() {
+    const myClasses = await getClassesByTeacher(currentUser.id);
+    const myDecks = await listDecks(currentUser.id);
+
+    // Pre-fetch shared decks for each class (needed before building HTML)
+    const sharedDecksMap = {};
+    for (const cls of myClasses) {
+      sharedDecksMap[cls.id] = await getSharedDecksByClass(cls.id);
+    }
 
     // Capture which <details> sections are currently open before wiping the DOM
     const openSections = new Set(
@@ -63,7 +67,7 @@ export async function renderClassesScreen(appEl, { setScreen, renderAll, state }
             ${myClasses.length === 0
               ? `<p class="small" style="color:var(--muted);">No classes yet.</p>`
               : myClasses.map(cls => {
-                  const sharedDecks = getSharedDecksByClass(cls.id);
+                  const sharedDecks = sharedDecksMap[cls.id];
                   const deckSelectHtml = myDecks.length === 0
                     ? `<span class="small" style="color:var(--muted);">Create a deck first.</span>`
                     : `<select id="deck-select-${escapeHtml(cls.id)}" style="flex:1; padding:6px 8px; font-size:13px; border:1px solid var(--border); border-radius:8px;">
@@ -138,17 +142,17 @@ export async function renderClassesScreen(appEl, { setScreen, renderAll, state }
       }
     });
 
-    appEl.querySelector("#createClassBtn")?.addEventListener("click", () => {
+    appEl.querySelector("#createClassBtn")?.addEventListener("click", async () => {
       const input = appEl.querySelector("#newClassName");
       const name = input?.value?.trim();
       if (!name) return;
-      createClass(currentUser.id, name);
+      await createClass(currentUser.id, name);
       input.value = "";
       setMessage("Class created.");
-      render();
+      await render();
     });
 
-    appEl.querySelector("#classesList")?.addEventListener("click", (e) => {
+    appEl.querySelector("#classesList")?.addEventListener("click", async (e) => {
       // Prevent Remove button clicks from toggling parent <details> or submitting forms
       if (e.target?.tagName === "BUTTON") {
         e.preventDefault();
@@ -161,21 +165,21 @@ export async function renderClassesScreen(appEl, { setScreen, renderAll, state }
         const selectedDeckId = select?.value;
         if (!selectedDeckId) {
           setMessage("Please select a deck to share.", "error");
-          render();
+          await render();
           return;
         }
-        const deck = getDeck(currentUser.id, selectedDeckId);
+        const deck = await getDeck(currentUser.id, selectedDeckId);
         if (!deck || !deck.cards || deck.cards.length === 0) {
           setMessage("That deck has no cards to share.", "error");
-          render();
+          await render();
           return;
         }
-        shareDeckToClass(currentUser.id, shareClassId, {
+        await shareDeckToClass(currentUser.id, shareClassId, {
           cards: deck.cards,
           deckName: deck.title || "My deck",
         });
         setMessage(`"${deck.title}" shared to class.`);
-        render();
+        await render();
         return;
       }
 
@@ -184,27 +188,27 @@ export async function renderClassesScreen(appEl, { setScreen, renderAll, state }
         const input = appEl.querySelector(`.student-id-input[data-class-id="${addStudentClassId}"]`);
         const studentId = input?.value?.trim();
         if (!studentId) return;
-        addStudentToClass(addStudentClassId, studentId);
+        await addStudentToClass(addStudentClassId, studentId);
         input.value = "";
         setMessage("Student added.");
-        render();
+        await render();
         return;
       }
 
       const deleteSharedId = e.target?.getAttribute("data-delete-shared");
       if (deleteSharedId) {
-        deleteSharedDeck(deleteSharedId);
+        await deleteSharedDeck(deleteSharedId);
         setMessage("Shared deck removed.");
-        render();
+        await render();
         return;
       }
 
       const removeStudentId = e.target?.getAttribute("data-remove-student");
       const removeStudentClassId = e.target?.getAttribute("data-remove-student-class");
       if (removeStudentId && removeStudentClassId) {
-        removeStudentFromClass(removeStudentClassId, removeStudentId);
+        await removeStudentFromClass(removeStudentClassId, removeStudentId);
         setMessage("Student removed.");
-        render();
+        await render();
         return;
       }
     });
@@ -215,8 +219,14 @@ export async function renderClassesScreen(appEl, { setScreen, renderAll, state }
     });
   }
 
-  function renderStudent() {
-    const myClasses = getClassesByStudent(currentUser.id);
+  async function renderStudent() {
+    const myClasses = await getClassesByStudent(currentUser.id);
+
+    // Pre-fetch shared decks for each class
+    const sharedDecksMap = {};
+    for (const cls of myClasses) {
+      sharedDecksMap[cls.id] = await getSharedDecksByClass(cls.id);
+    }
 
     appEl.innerHTML = `
       <section class="card" style="max-width:600px; margin:0 auto;">
@@ -226,7 +236,7 @@ export async function renderClassesScreen(appEl, { setScreen, renderAll, state }
           ${myClasses.length === 0
             ? `<p class="small" style="color:var(--muted);">You haven't been added to any classes yet.</p>`
             : myClasses.map(cls => {
-                const sharedDecks = getSharedDecksByClass(cls.id);
+                const sharedDecks = sharedDecksMap[cls.id];
                 return `<div class="card" style="margin-bottom:12px; padding:12px;">
                   <strong>${escapeHtml(cls.name)}</strong>
                   ${sharedDecks.length === 0
@@ -261,5 +271,5 @@ export async function renderClassesScreen(appEl, { setScreen, renderAll, state }
     });
   }
 
-  render();
+  await render();
 }

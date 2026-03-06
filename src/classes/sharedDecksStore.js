@@ -1,3 +1,5 @@
+import { mapSharedDeck } from "../data/mappers.js";
+
 export const STORAGE_SHARED_DECKS_KEY = "knowit_shared_decks_v1";
 export const STORAGE_SHARED_PROGRESS_KEY = "knowit_shared_deck_progress_v1";
 
@@ -17,17 +19,17 @@ export function saveSharedDecks(decks) {
 
 export function getSharedDecksByClass(classId) {
   const decks = loadSharedDecks();
-  return decks.filter(d => d.classId === classId);
+  return decks.filter(d => d.classId === classId).map(mapSharedDeck);
 }
 
 export function getSharedDecksByTeacher(teacherId) {
   const decks = loadSharedDecks();
-  return decks.filter(d => d.teacherId === teacherId);
+  return decks.filter(d => d.teacherId === teacherId).map(mapSharedDeck);
 }
 
 export function getSharedDeckById(sharedDeckId) {
   const decks = loadSharedDecks();
-  return decks.find(d => d.id === sharedDeckId) || null;
+  return mapSharedDeck(decks.find(d => d.id === sharedDeckId) || null);
 }
 
 export function shareDeckToClass(teacherId, classId, deckSnapshot) {
@@ -47,7 +49,7 @@ export function shareDeckToClass(teacherId, classId, deckSnapshot) {
     existing.lastEditedAt = Date.now();
     saveSharedDecks(decks);
     resetSharedDeckProgress(existing.id);
-    return existing;
+    return mapSharedDeck(existing);
   }
 
   const newDeck = {
@@ -63,7 +65,7 @@ export function shareDeckToClass(teacherId, classId, deckSnapshot) {
   };
   decks.push(newDeck);
   saveSharedDecks(decks);
-  return newDeck;
+  return mapSharedDeck(newDeck);
 }
 
 export function deleteSharedDeck(sharedDeckId) {
