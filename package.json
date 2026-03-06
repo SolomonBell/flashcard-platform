@@ -18,9 +18,7 @@
     "url": "https://github.com/SolomonBell/flashcards-app/issues"
   },
   "homepage": "https://github.com/SolomonBell/flashcards-app#readme",
-  "dependencies": {
-    "@supabase/supabase-js": "^2.45.0"
-  },
+  "dependencies": {},
   "devDependencies": {
     "http-server": "^14.1.1"
   }

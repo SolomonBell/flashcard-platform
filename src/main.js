@@ -5,9 +5,6 @@ import { renderStudyScreen } from "./study/study.js";
 import { renderFeedback } from "./study/feedback.js";
 import { getCurrentUser, clearSession } from "./authStore.js";
 import { renderAuthScreen } from "./auth.js";
-import { getSupabase } from "./supabaseClient.js";
-import { getUser, signOut, onAuthStateChange } from "./auth/auth.js";
-import { renderSupabaseAuthScreen } from "./auth/supabaseAuthScreen.js";
 import { startSession, endSession, recordAnswer, updateStageSnapshot } from "./analytics/analyticsStore.js";
 
 let state = null;
@@ -15,14 +12,8 @@ let currentUserId = null;
 
 const appEl = document.getElementById("app");
 
-/** Timeout handle for clearing "Saved" after 1.5s */
 let savedHideTimeout = null;
 
-/**
- * Set sync/save status in the header. Types: 'idle' (hidden), 'saving', 'saved', 'saved_locally', 'error'.
- * @param {string} type
- * @param {string} [message]
- */
 function setSyncStatus(type, message) {
   const header = document.querySelector(".header");
   let wrap = header?.querySelector("#syncStatusContainer");
@@ -39,7 +30,6 @@ function setSyncStatus(type, message) {
   const text =
     type === "saving" ? "Saving…" :
     type === "saved" ? "Saved" :
-    type === "saved_locally" ? "Saved locally (sync failed)" :
     type === "error" ? (message ? `Error: ${String(message).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}` : "Error") : "";
   const visible = type !== "idle" && text;
   wrap.innerHTML = visible
@@ -54,20 +44,12 @@ function setSyncStatus(type, message) {
   }
 }
 
-/**
- * Effective user: Supabase user when Supabase is configured, else local (authStore) user.
- */
-async function getEffectiveUser() {
-  const supabase = await getSupabase();
-  if (supabase) {
-    const { data } = await getUser();
-    return data?.user ?? null;
-  }
+function getEffectiveUser() {
   return getCurrentUser();
 }
 
 async function loadUserState() {
-  const user = await getEffectiveUser();
+  const user = getEffectiveUser();
   if (!user) {
     state = null;
     currentUserId = null;
@@ -83,18 +65,13 @@ function setScreen(screen) {
 }
 
 async function save() {
-  if (!state || !currentUserId) return undefined;
+  if (!state || !currentUserId) return;
   setSyncStatus("saving");
   try {
-    const result = await saveStateForUser(currentUserId, state);
-    if (result?.updated !== undefined) state = result.updated;
-    if (result?.fellBackToLocal) setSyncStatus("saved_locally");
-    else if (result?.updated !== undefined) setSyncStatus("saved");
-    else setSyncStatus("idle");
-    return result?.updated;
+    await saveStateForUser(currentUserId, state);
+    setSyncStatus("saved");
   } catch (err) {
     setSyncStatus("error", err?.message || "Save failed");
-    return undefined;
   }
 }
 
@@ -105,16 +82,13 @@ async function setStateAndRender(nextState) {
 }
 
 function feedback(payload) {
-  // Record answer in analytics (pass card if available)
   recordAnswer({ isCorrect: payload.correct, card: payload.current });
-  
   renderFeedback(appEl, state, payload, {
     renderProgressBar,
     save,
     setScreen,
     renderAll,
     next: () => {
-      // Update stage snapshot after answer
       if (state && state.cards) {
         updateStageSnapshot({ cards: state.cards });
       }
@@ -123,7 +97,7 @@ function feedback(payload) {
   });
 }
 
-function renderNavigation(currentUser, isSupabase) {
+function renderNavigation(currentUser) {
   const header = document.querySelector(".header");
   if (!header) return;
 
@@ -139,6 +113,19 @@ function renderNavigation(currentUser, isSupabase) {
   syncStatusContainer.id = "syncStatusContainer";
   syncStatusContainer.className = "sync-status-wrap";
 
+  const myDecksBtn = document.createElement("button");
+  myDecksBtn.textContent = "Decks";
+  myDecksBtn.className = "small";
+  myDecksBtn.style.cssText = "padding:6px 10px; font-size:12px;";
+  myDecksBtn.addEventListener("click", () => {
+    if (state) {
+      setScreen("decks");
+      save();
+      renderAll();
+    }
+  });
+  navContainer.appendChild(myDecksBtn);
+
   const classesBtn = document.createElement("button");
   classesBtn.textContent = "Classes";
   classesBtn.className = "small";
@@ -152,43 +139,40 @@ function renderNavigation(currentUser, isSupabase) {
   });
   navContainer.appendChild(classesBtn);
 
-  if (isSupabase && currentUser?.email) {
-    const emailSpan = document.createElement("span");
-    emailSpan.className = "small";
-    emailSpan.style.cssText = "font-size:12px; color:var(--muted, #666);";
-    emailSpan.textContent = currentUser.email;
-    navContainer.appendChild(emailSpan);
-    const accountBtn = document.createElement("button");
-    accountBtn.id = "accountBtn";
-    accountBtn.type = "button";
-    accountBtn.className = "small";
-    accountBtn.style.cssText = "padding:6px 10px; font-size:12px;";
-    accountBtn.textContent = "Account";
-    accountBtn.addEventListener("click", () => {
-      import("./auth/authUI.js").then((m) => m.openAuthPanel());
+  if (currentUser.role === "teacher") {
+    const analyticsBtn = document.createElement("button");
+    analyticsBtn.textContent = "Analytics";
+    analyticsBtn.className = "small";
+    analyticsBtn.style.cssText = "padding:6px 10px; font-size:12px;";
+    analyticsBtn.addEventListener("click", () => {
+      if (state) {
+        setScreen("analytics");
+        save();
+        renderAll();
+      }
     });
-    navContainer.appendChild(accountBtn);
+    navContainer.appendChild(analyticsBtn);
   }
 
   const logoutBtn = document.createElement("button");
   logoutBtn.id = "logoutBtn";
-  logoutBtn.textContent = isSupabase ? "Sign out" : "Log out";
+  logoutBtn.textContent = "Log out";
   logoutBtn.className = "small";
   logoutBtn.style.cssText = "padding:6px 10px; font-size:12px;";
-  logoutBtn.addEventListener("click", async () => {
-    if (isSupabase) {
-      await signOut();
-      await loadUserState();
-    } else {
-      clearSession();
-    }
+  logoutBtn.addEventListener("click", () => {
+    clearSession();
     renderAll();
   });
   navContainer.appendChild(logoutBtn);
 
+  const leftSpacer = document.createElement("div");
+
+  syncStatusContainer.style.cssText = "justify-self:end; min-width:80px; text-align:right;";
+
   const row = document.createElement("div");
   row.className = "header-nav-row";
-  row.style.cssText = "display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; margin-top:12px; gap:8px;";
+  row.style.cssText = "display:grid; grid-template-columns:1fr auto 1fr; align-items:center; margin-top:12px;";
+  row.appendChild(leftSpacer);
   row.appendChild(navContainer);
   row.appendChild(syncStatusContainer);
   header.appendChild(row);
@@ -197,30 +181,22 @@ function renderNavigation(currentUser, isSupabase) {
 let previousScreen = null;
 
 async function renderAll() {
-  const supabaseConfigured = (await getSupabase()) != null;
-  const currentUser = supabaseConfigured ? ((await getUser()).data?.user ?? null) : getCurrentUser();
+  const currentUser = getEffectiveUser();
 
   if (!currentUser) {
     endSession();
-    const existingLogout = document.querySelector("#logoutBtn");
-    if (existingLogout) existingLogout.remove();
-    const existingNav = document.querySelector("#navButtons");
-    if (existingNav) existingNav.remove();
-    const existingAccount = document.querySelector("#accountBtn");
-    if (existingAccount) existingAccount.remove();
+    document.querySelector("#logoutBtn")?.remove();
+    document.querySelector("#navButtons")?.remove();
     state = null;
     currentUserId = null;
     previousScreen = null;
-
-    if (supabaseConfigured) {
-      const isRecovery = /type=recovery/i.test(location.hash || "") || /#auth=reset/i.test(location.hash || "");
-      renderSupabaseAuthScreen(appEl, isRecovery ? { initialView: "setNewPassword" } : {});
-    } else {
-      renderAuthScreen(appEl, async () => {
-        await loadUserState();
-        renderAll();
-      });
-    }
+    renderAuthScreen(appEl, async () => {
+      await loadUserState();
+      if (state && getEffectiveUser()?.role === "teacher") {
+        state.screen = "decks";
+      }
+      renderAll();
+    });
     return;
   }
 
@@ -233,31 +209,26 @@ async function renderAll() {
   if (!state) {
     await loadUserState();
   }
-  
-  // Handle session lifecycle: end session when leaving study screens
+
   if (previousScreen === "study" || previousScreen === "sharedStudy") {
     if (state.screen !== "study" && state.screen !== "sharedStudy") {
       endSession();
     }
   }
-  
-  // Start session when entering study screens
-  if ((state.screen === "study" || state.screen === "sharedStudy") && 
+
+  if ((state.screen === "study" || state.screen === "sharedStudy") &&
       previousScreen !== "study" && previousScreen !== "sharedStudy") {
     if (state.screen === "study") {
-      // Personal deck
       startSession({
         userId: currentUser.id,
         deckContext: "personal",
         deckId: state.deckId || `deck_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       });
-      // Ensure deckId is saved
       if (!state.deckId) {
         state.deckId = `deck_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         save();
       }
     } else if (state.screen === "sharedStudy") {
-      // Shared deck
       startSession({
         userId: currentUser.id,
         deckContext: "shared",
@@ -265,16 +236,22 @@ async function renderAll() {
       });
     }
   }
-  
-  renderNavigation(currentUser, supabaseConfigured);
-  
-  if (state.screen === "create") {
+
+  renderNavigation(currentUser);
+
+  if (state.screen === "decks") {
+    const { renderDecksScreen } = await import("./screens/decksScreen.js");
+    renderDecksScreen(appEl, { renderAll, state, currentUserId });
+  } else if (state.screen === "create") {
     renderCreateScreen(appEl, state, {
       save,
       setScreen,
       renderAll,
       resetAll: () => resetAllForUser(currentUserId, setStateAndRender),
     });
+  } else if (state.screen === "analytics") {
+    const { renderAnalyticsScreen } = await import("./screens/analyticsScreen.js");
+    renderAnalyticsScreen(appEl, { currentUserId });
   } else if (state.screen === "classes") {
     const { renderClassesScreen } = await import("./screens/classesScreen.js");
     const startAssignedDeckStudy = ({ deckId, cards }) => {
@@ -283,13 +260,11 @@ async function renderAll() {
       state.screen = "study";
       renderAll();
     };
-    await renderClassesScreen(appEl, { setScreen, renderAll, startAssignedDeckStudy });
+    await renderClassesScreen(appEl, { setScreen, renderAll, startAssignedDeckStudy, state });
   } else if (state.screen === "sharedStudy") {
-    // Handle shared deck study
     import("./classes/sharedDecksStore.js").then(async ({ getSharedDeckById, getSharedDeckProgress, saveSharedDeckProgress }) => {
       const sharedDeck = getSharedDeckById(state.sharedDeckId);
       if (!sharedDeck) {
-        // Shared deck not found, go back to classes
         state.sharedDeckId = null;
         state.screen = "classes";
         save();
@@ -297,10 +272,8 @@ async function renderAll() {
         return;
       }
 
-      // Load or create student progress
       let progress = await getSharedDeckProgress(state.sharedDeckId, currentUser.id);
       if (!progress) {
-        // Create initial progress from shared deck snapshot
         const initialCards = sharedDeck.deckSnapshot.cards.map(c => ({
           ...c,
           stage: 1,
@@ -311,21 +284,17 @@ async function renderAll() {
         progress = { cards: initialCards };
       }
 
-      // Create a temporary in-memory state for studying shared deck
       const sharedState = {
         screen: "sharedStudy",
         cards: progress.cards,
         sharedDeckId: state.sharedDeckId,
       };
 
-      // Custom save function for shared deck progress
       const sharedSave = async () => {
         await saveSharedDeckProgress(state.sharedDeckId, currentUser.id, sharedState.cards);
-        // Update stage snapshot after save
         updateStageSnapshot({ cards: sharedState.cards });
       };
 
-      // Custom setScreen that handles going back to classes
       const sharedSetScreen = (screen) => {
         if (screen === "create" || screen === "classes") {
           state.sharedDeckId = null;
@@ -336,7 +305,6 @@ async function renderAll() {
         save();
       };
 
-      // Custom feedback wrapper for shared study
       const sharedFeedback = (payload) => {
         recordAnswer({ isCorrect: payload.correct, card: payload.current });
         renderFeedback(appEl, sharedState, payload, {
@@ -360,14 +328,12 @@ async function renderAll() {
       });
     });
   } else if (state.screen === "study") {
-    // Wrap save to update stage snapshot
     const studySave = () => {
       save();
       if (state && state.cards) {
         updateStageSnapshot({ cards: state.cards });
       }
     };
-    
     renderStudyScreen(appEl, state, {
       renderProgressBar,
       save: studySave,
@@ -376,36 +342,12 @@ async function renderAll() {
       feedback,
     });
   }
-  
-  // Update previous screen for next render
+
   previousScreen = state.screen;
 }
 
-// Auth state listener: register once to avoid duplicate renders / multiple GoTrue subscriptions
-let authListenerRegistered = false;
-(async () => {
-  const supabase = await getSupabase();
-  if (supabase && !authListenerRegistered) {
-    authListenerRegistered = true;
-    onAuthStateChange(() => {
-      renderAll();
-    });
-  }
-})();
-
-// Initialize on load (async so state is ready before first render)
+// Initialize on load
 (async () => {
   await loadUserState();
   await renderAll();
 })();
-
-// If URL indicates Supabase recovery/password-reset redirect, open auth panel in "Set new password" mode
-import("./auth/auth.js")
-  .then((m) => m.maybeHandleAuthRedirect())
-  .catch(() => {});
-
-// Development: log Supabase connection status after load
-import("./supabaseClient.js")
-  .then((m) => m.getSupabase())
-  .then((client) => console.log(client ? "Supabase connected" : "Supabase NOT configured"))
-  .catch(() => console.log("Supabase NOT configured"));

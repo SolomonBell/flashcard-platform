@@ -1,4 +1,4 @@
-import { uid } from "../utils.js";
+import { uid, escapeHtml } from "../utils.js";
 import { renderCardsList, wireCardsListHandlers } from "./cardsList.js";
 
 export function blankCard() {
@@ -30,12 +30,24 @@ export function renderCreateScreen(appEl, state, { save, setScreen, renderAll, r
 
   const validCount = getValidCards(state).length;
   const totalCount = state.cards.length;
+  const deckTitle = state.deckTitle || "My Deck";
 
   appEl.innerHTML = `
     <section class="card">
       <h2 style="margin:0; text-align:center;">Create Your Deck</h2>
 
-      <!-- Total Cards (boxed + clickable) + Reset row -->
+      <!-- Deck name input -->
+      <div style="display:flex; align-items:center; gap:8px; margin-top:14px;">
+        <label class="label" for="deckTitleInput" style="margin:0; white-space:nowrap;">
+          Deck Name:
+        </label>
+        <input type="text" id="deckTitleInput"
+          value="${escapeHtml(deckTitle)}"
+          placeholder="Deck name"
+          style="flex:1;" />
+      </div>
+
+      <!-- Total Cards + Reset row -->
       <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px;">
         <button
           id="totalCardsBtn"
@@ -70,8 +82,20 @@ export function renderCreateScreen(appEl, state, { save, setScreen, renderAll, r
     </section>
   `;
 
+  // Deck title: update on blur or Enter
+  const titleInput = appEl.querySelector("#deckTitleInput");
+  function saveDeckTitle() {
+    const newTitle = titleInput.value.trim();
+    if (newTitle && newTitle !== state.deckTitle) {
+      state.deckTitle = newTitle;
+      save();
+    }
+  }
+  titleInput.addEventListener("blur", saveDeckTitle);
+  titleInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { titleInput.blur(); } });
+
   appEl.querySelector("#resetAll").addEventListener("click", () => {
-    if (confirm("Reset all app data? This deletes your deck + progress.")) resetAll();
+    if (confirm("Clear all cards in this deck? This cannot be undone.")) resetAll();
   });
 
   appEl.querySelector("#startStudy").addEventListener("click", () => {
@@ -94,7 +118,6 @@ export function renderCreateScreen(appEl, state, { save, setScreen, renderAll, r
     renderAll();
   });
 
-  // ✅ Add Card now adds to the BOTTOM
   function addCardAndScrollToBottom() {
     const newC = blankCard();
     state.cards.push(newC);
@@ -110,9 +133,6 @@ export function renderCreateScreen(appEl, state, { save, setScreen, renderAll, r
 
   appEl.querySelector("#addCardBottom").addEventListener("click", addCardAndScrollToBottom);
 
-  // ✅ Total Cards adjusts size:
-  // - increasing: add blanks to bottom (no deletion)
-  // - decreasing: delete from bottom up
   appEl.querySelector("#totalCardsBtn").addEventListener("click", () => {
     const current = state.cards.length;
     const raw = prompt("Enter Total Number of Cards:", String(current));
@@ -129,23 +149,13 @@ export function renderCreateScreen(appEl, state, { save, setScreen, renderAll, r
     if (capped < current) {
       const removed = current - capped;
       const noun = removed === 1 ? "card" : "cards";
-
-      const ok = confirm(
-        `This will remove ${removed} ${noun} from the bottom of the list. Continue?`
-      );
-      if (!ok) return;
-
-      // keep first N cards => removes from bottom
+      if (!confirm(`This will remove ${removed} ${noun} from the bottom of the list. Continue?`)) return;
       state.cards = state.cards.slice(0, capped);
       if (state.cards.length === 0) state.cards.push(blankCard());
     } else if (capped > current) {
-      const toAdd = capped - current;
-      const newCards = Array.from({ length: toAdd }, () => blankCard());
-
-      // add to bottom (no deletion)
-      state.cards = state.cards.concat(newCards);
+      state.cards = state.cards.concat(Array.from({ length: capped - current }, () => blankCard()));
     } else {
-      return; // no change
+      return;
     }
 
     save();
@@ -155,10 +165,5 @@ export function renderCreateScreen(appEl, state, { save, setScreen, renderAll, r
   // Render list + wire handlers
   const listWrap = appEl.querySelector("#cardsList");
   listWrap.innerHTML = renderCardsList(state);
-
-  wireCardsListHandlers(listWrap, state, {
-    save,
-    render: renderAll,
-    blankCard,
-  });
+  wireCardsListHandlers(listWrap, state, { save, render: renderAll, blankCard });
 }
