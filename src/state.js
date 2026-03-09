@@ -42,6 +42,7 @@ export async function loadStateForUser(userId) {
     deckId: activeDeckId,
     deckTitle: deck.title || "My Deck",
     lastShownCardId: deck.lastShownCardId || null,
+    largeDeckBacklog: deck.largeDeckBacklog, // undefined if not yet initialized
   };
 }
 
@@ -55,6 +56,7 @@ export async function saveStateForUser(userId, state) {
       title: state.deckTitle || "My Deck",
       cards: state.cards || [],
       lastShownCardId: state.lastShownCardId || null,
+      largeDeckBacklog: state.largeDeckBacklog,
     });
   }
 }

@@ -95,7 +95,7 @@ export async function renderClassesScreen(appEl, { setScreen, renderAll, state }
                             : cls.studentIds.map(sid => `
                               <div style="display:grid; grid-template-columns:1fr auto; align-items:center; gap:8px; margin-top:4px;">
                                 <span class="small" style="color:var(--muted);">${escapeHtml(sid)}</span>
-                                <button type="button" class="small" style="padding:3px 8px; font-size:0.8rem;"
+                                <button type="button" class="danger small" style="padding:3px 8px; font-size:0.8rem;"
                                   data-remove-student="${escapeHtml(sid)}"
                                   data-remove-student-class="${escapeHtml(cls.id)}">Remove</button>
                               </div>
@@ -119,7 +119,7 @@ export async function renderClassesScreen(appEl, { setScreen, renderAll, state }
                             : sharedDecks.map(sd => `
                               <div style="display:grid; grid-template-columns:1fr auto; align-items:center; gap:8px; margin-top:4px;">
                                 <span class="small">${escapeHtml(sd.deckSnapshot.deckName)}</span>
-                                <button type="button" class="small" style="padding:3px 8px; font-size:0.8rem;" data-delete-shared="${escapeHtml(sd.id)}">Remove</button>
+                                <button type="button" class="danger small" style="padding:3px 8px; font-size:0.8rem;" data-delete-shared="${escapeHtml(sd.id)}">Remove</button>
                               </div>
                             `).join("")}
                         </div>
@@ -128,9 +128,6 @@ export async function renderClassesScreen(appEl, { setScreen, renderAll, state }
                   </div>`;
                 }).join("")}
           </div>
-        </div>
-        <div style="margin-top:16px; text-align:center;">
-          <button type="button" id="backToDecksBtn" class="small">Back to My Deck</button>
         </div>
       </section>
     `;
@@ -213,10 +210,6 @@ export async function renderClassesScreen(appEl, { setScreen, renderAll, state }
       }
     });
 
-    appEl.querySelector("#backToDecksBtn")?.addEventListener("click", () => {
-      setScreen("create");
-      renderAll();
-    });
   }
 
   async function renderStudent() {
@@ -250,9 +243,6 @@ export async function renderClassesScreen(appEl, { setScreen, renderAll, state }
                 </div>`;
               }).join("")}
         </div>
-        <div style="margin-top:16px; text-align:center;">
-          <button type="button" id="backToDecksBtn" class="small">Back to My Deck</button>
-        </div>
       </section>
     `;
 
@@ -265,10 +255,6 @@ export async function renderClassesScreen(appEl, { setScreen, renderAll, state }
       }
     });
 
-    appEl.querySelector("#backToDecksBtn")?.addEventListener("click", () => {
-      setScreen("create");
-      renderAll();
-    });
   }
 
   await render();

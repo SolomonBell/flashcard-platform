@@ -66,6 +66,7 @@ export function renderLearn(appEl, state, current, deps) {
       stage: 1,
       stage3Mastered: false,
     }));
+    state.largeDeckBacklog = undefined; // force re-init on next session
   }
 
   function advance() {

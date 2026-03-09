@@ -37,6 +37,7 @@ export function renderRecall(appEl, state, current, deps) {
       stage: 1,
       stage3Mastered: false,
     }));
+    state.largeDeckBacklog = undefined; // force re-init on next session
   }
 
   function render() {
@@ -161,7 +162,7 @@ export function renderRecall(appEl, state, current, deps) {
     });
 
     if (step === "answer") {
-      appEl.querySelector("#submitRecall").addEventListener("click", () => {
+      appEl.querySelector("#submitRecall").addEventListener("click", async () => {
         const userAnswer = inputEl.value.trim();
         if (!userAnswer) {
           alert("Please enter an answer.");
@@ -177,7 +178,7 @@ export function renderRecall(appEl, state, current, deps) {
 
         if (c.longAnswer) {
           // Use AI grader for long answer cards
-          const graderResult = gradeLongAnswer({
+          const graderResult = await gradeLongAnswer({
             promptFront: current.front,
             expectedAnswer: correctAnswer,
             userAnswer: userAnswer,
@@ -190,7 +191,14 @@ export function renderRecall(appEl, state, current, deps) {
           isCorrect = normalize(userAnswer) === normalize(correctAnswer);
         }
 
+        const prevStage = c.stage;
         applyStageRules(c, isCorrect);
+
+        // Large-deck mode: refill the pool when a card graduates Stage 2 → Stage 3.
+        if (prevStage === 2 && c.stage === 3 && state.largeDeckBacklog?.length) {
+          state.largeDeckBacklog.shift();
+        }
+
         deps.save();
 
         // Record answer in analytics (use grader.correct for longAnswer cards)

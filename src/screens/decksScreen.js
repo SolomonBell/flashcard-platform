@@ -23,21 +23,21 @@ export function renderDecksScreen(appEl, { renderAll, state, currentUserId }) {
                 No decks yet. Create one above.
                </p>`
             : decks.map(deck => `
-              <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+              <div style="display:grid; grid-template-columns:1fr auto; align-items:center; gap:8px;
                           padding:10px 12px; border:1px solid var(--border, #e5e7eb);
                           border-radius:10px; margin-bottom:8px;">
-                <span style="flex:1; font-weight:600; min-width:80px; word-break:break-word;">
+                <span style="font-weight:600; word-break:break-word;">
                   ${escapeHtml(deck.title)}
                 </span>
-                <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                  <button type="button" class="primary small"
+                <div style="display:flex; gap:6px;">
+                  <button type="button" class="primary small" style="padding:3px 8px; font-size:0.8rem;"
                     data-open-deck="${escapeHtml(deck.id)}">Open</button>
-                  <button type="button" class="small"
+                  <button type="button" class="small" style="padding:3px 8px; font-size:0.8rem;"
                     data-rename-deck="${escapeHtml(deck.id)}"
                     data-deck-title="${escapeHtml(deck.title)}">Rename</button>
-                  <button type="button" class="small"
+                  <button type="button" class="small" style="padding:3px 8px; font-size:0.8rem;"
                     data-duplicate-deck="${escapeHtml(deck.id)}">Duplicate</button>
-                  <button type="button" class="danger small"
+                  <button type="button" class="danger small" style="padding:3px 8px; font-size:0.8rem;"
                     data-delete-deck="${escapeHtml(deck.id)}"
                     data-deck-title="${escapeHtml(deck.title)}">Delete</button>
                 </div>

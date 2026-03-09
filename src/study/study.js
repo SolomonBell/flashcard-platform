@@ -9,6 +9,30 @@ import {
 import { renderLearn } from "./learn.js";
 import { renderRecall } from "./recall.js";
 
+const LARGE_DECK_THRESHOLD = 12;
+const LARGE_DECK_POOL_SIZE = 8;
+
+/**
+ * One-time initializer for large-deck mode.
+ * Called at the start of every renderStudyScreen; no-ops if already initialized
+ * or if the deck is small enough not to need it.
+ *
+ * Sets state.largeDeckBacklog to an ordered array of card IDs that are not yet
+ * eligible for Stage 1/2.  undefined = not initialized; [] = exhausted.
+ */
+function initLargeDeckMode(state) {
+  if (state.cards.length <= LARGE_DECK_THRESHOLD) return;
+  if (state.largeDeckBacklog !== undefined) return;
+
+  // Cards that are genuinely unseen (stage 1, never shown) are backlog candidates.
+  // Everything else — already progressing or already seen — counts as in the pool.
+  const unseen = state.cards.filter(c => c.stage === 1 && !c.lastSeenAt);
+  const inPoolCount = state.cards.length - unseen.length;
+  const spotsAvailable = Math.max(0, LARGE_DECK_POOL_SIZE - inPoolCount);
+
+  state.largeDeckBacklog = unseen.slice(spotsAvailable).map(c => c.id);
+}
+
 export function buildMCOptions(currentCard, allCards) {
   const correct = {
     text: escapeHtml(currentCard.back),
@@ -38,9 +62,13 @@ export function buildMCOptions(currentCard, allCards) {
  * Pick next card by stage rules; never the same card twice in a row when more than one eligible.
  * @param {object[]} cards
  * @param {string | null} lastShownCardId
+ * @param {string[] | undefined} backlogIds - IDs of cards not yet introduced (large-deck mode)
  */
-function pickNextCard(cards, lastShownCardId) {
-  const learn = cards.filter(c => c.stage === 1);
+function pickNextCard(cards, lastShownCardId, backlogIds) {
+  const backlogSet = backlogIds?.length ? new Set(backlogIds) : null;
+
+  // Backlog cards are always stage 1; only the learn pool needs filtering.
+  const learn = cards.filter(c => c.stage === 1 && (!backlogSet || !backlogSet.has(c.id)));
   const recall = cards.filter(c => c.stage === 2);
   const memorized = cards.filter(c => c.stage === 3);
 
@@ -67,7 +95,8 @@ function pickNextCard(cards, lastShownCardId) {
 }
 
 export function renderStudyScreen(appEl, state, deps) {
-  const current = pickNextCard(state.cards, state.lastShownCardId ?? null);
+  initLargeDeckMode(state);
+  const current = pickNextCard(state.cards, state.lastShownCardId ?? null, state.largeDeckBacklog);
 
   if (!current) {
     appEl.innerHTML = `

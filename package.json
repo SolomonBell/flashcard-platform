@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "proxy": "ANTHROPIC_API_KEY=YOUR_KEY_HERE node server/aiProxy.js"
   },
   "repository": {
     "type": "git",

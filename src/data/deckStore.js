@@ -55,8 +55,8 @@ export function getDeck(userId, deckId) {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     parsed.cards = normalizeCards(parsed.cards);
-    // Map top-level fields; preserve cards and lastShownCardId unchanged
-    return { ...mapDeck(parsed), cards: parsed.cards, lastShownCardId: parsed.lastShownCardId };
+    // Map top-level fields; preserve cards, lastShownCardId, and large-deck state unchanged
+    return { ...mapDeck(parsed), cards: parsed.cards, lastShownCardId: parsed.lastShownCardId, largeDeckBacklog: parsed.largeDeckBacklog };
   } catch { return null; }
 }
 
