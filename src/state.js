@@ -1,7 +1,7 @@
 import {
   getDeck, saveDeck, getActiveDeckId, setActiveDeckId,
   migrateFromOldFormat,
-} from "./data/deckStore.js";
+} from "./data/store/index.js";
 
 const USER_STATE_PREFIX = "knowit_user_state_v1_";
 
@@ -22,16 +22,16 @@ export async function loadStateForUser(userId) {
   if (!userId) return null;
 
   // One-time migration from old single-deck blob format
-  migrateFromOldFormat(userId);
+  await migrateFromOldFormat(userId);
 
-  const activeDeckId = getActiveDeckId(userId);
+  const activeDeckId = await getActiveDeckId(userId);
   if (!activeDeckId) {
     return { screen: "decks", cards: [], deckId: null, deckTitle: null, lastShownCardId: null };
   }
 
-  const deck = getDeck(userId, activeDeckId);
+  const deck = await getDeck(userId, activeDeckId);
   if (!deck) {
-    setActiveDeckId(userId, null);
+    await setActiveDeckId(userId, null);
     return { screen: "decks", cards: [], deckId: null, deckTitle: null, lastShownCardId: null };
   }
 
@@ -50,8 +50,8 @@ export async function saveStateForUser(userId, state) {
   if (!userId || !state) return;
   saveUserScreenState(userId, state.screen);
   if (state.deckId) {
-    setActiveDeckId(userId, state.deckId);
-    saveDeck(userId, {
+    await setActiveDeckId(userId, state.deckId);
+    await saveDeck(userId, {
       id: state.deckId,
       title: state.deckTitle || "My Deck",
       cards: state.cards || [],
@@ -73,9 +73,9 @@ export function newStateForUser() {
 
 export async function resetAllForUser(userId, setStateAndRender) {
   if (!userId) return;
-  const activeDeckId = getActiveDeckId(userId);
+  const activeDeckId = await getActiveDeckId(userId);
   if (activeDeckId) {
-    saveDeck(userId, {
+    await saveDeck(userId, {
       id: activeDeckId,
       title: "My Deck",
       cards: [],
