@@ -13,7 +13,7 @@ import { localStore }   from "./localStore.js";
 import { supabaseStore } from "./supabaseStore.js";
 
 // ── Feature flag ─────────────────────────────────────────────────────────────
-const USE_SUPABASE = false;
+const USE_SUPABASE = true;
 
 /** The active store implementation. All screens import from here. */
 export const store = USE_SUPABASE ? supabaseStore : localStore;
