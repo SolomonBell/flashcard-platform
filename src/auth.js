@@ -1,5 +1,4 @@
-import { createUser, getUserByEmail, setSession } from "./authStore.js";
-import { hashPassword, verifyPassword } from "./crypto.js";
+import { createUser, signInWithPassword } from "./authStore.js";
 
 /** Renders a password input wrapped with a show/hide toggle button. */
 function passwordFieldHtml(id, label, placeholder = "") {
@@ -101,8 +100,7 @@ export function renderAuthScreen(appEl, onLoginSuccess) {
         }
 
         try {
-          const passwordHash = await hashPassword(password);
-          const result = createUser(email, passwordHash, role);
+          const result = await createUser(email, password, role);
 
           if (!result.success) {
             errorMessage = result.error;
@@ -110,7 +108,6 @@ export function renderAuthScreen(appEl, onLoginSuccess) {
             return;
           }
 
-          setSession(result.user.id);
           onLoginSuccess();
         } catch (err) {
           errorMessage = "An error occurred. Please try again.";
@@ -118,21 +115,14 @@ export function renderAuthScreen(appEl, onLoginSuccess) {
         }
       } else {
         try {
-          const user = getUserByEmail(email);
-          if (!user) {
-            errorMessage = "Invalid email or password.";
+          const result = await signInWithPassword(email, password);
+
+          if (!result.success) {
+            errorMessage = result.error || "Invalid email or password.";
             render();
             return;
           }
 
-          const isValid = await verifyPassword(password, user.passwordHash);
-          if (!isValid) {
-            errorMessage = "Invalid email or password.";
-            render();
-            return;
-          }
-
-          setSession(user.id);
           onLoginSuccess();
         } catch (err) {
           errorMessage = "An error occurred. Please try again.";

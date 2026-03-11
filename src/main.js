@@ -3,7 +3,7 @@ import { renderProgressBar } from "./progress.js";
 import { renderCreateScreen } from "./create/create.js";
 import { renderStudyScreen } from "./study/study.js";
 import { renderFeedback } from "./study/feedback.js";
-import { getCurrentUser, clearSession } from "./authStore.js";
+import { getCurrentUser, clearSession, initAuth } from "./authStore.js";
 import { renderAuthScreen } from "./auth.js";
 import { startSession, endSession, recordAnswer, updateStageSnapshot } from "./analytics/analyticsStore.js";
 
@@ -348,6 +348,7 @@ async function renderAll() {
 
 // Initialize on load
 (async () => {
+  await initAuth();
   await loadUserState();
   await renderAll();
 })();
