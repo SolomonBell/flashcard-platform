@@ -1,4 +1,5 @@
 import { escapeHtml } from "../utils.js";
+import { getValidCards } from "./create.js";
 
 export function renderCardsList(state) {
   return state.cards.map((c, idx) => `
@@ -44,7 +45,9 @@ export function wireCardsListHandlers(rootEl, state, { save, render, blankCard }
 
       card[field] = e.target.value;
       save();
-      // 🚫 no render() here
+      // 🚫 no render() here — but do update the Start Studying button state
+      const startBtn = document.querySelector("#startStudy");
+      if (startBtn) startBtn.disabled = getValidCards(state).length < 1;
     });
   });
 
