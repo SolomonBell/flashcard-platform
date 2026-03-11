@@ -53,7 +53,7 @@
  */
 
 import { getSupabaseClient } from "../../supabaseClient.js";
-import { mapDeck } from "../mappers.js";
+import { mapDeck, mapClass, mapSharedDeck } from "../mappers.js";
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
@@ -365,29 +365,444 @@ export const supabaseStore = {
   clearSession:         stub,
   getCurrentUser:       stub,
 
-  // ── Classes — not yet implemented ─────────────────────────────────────────
+  // ── Classes ───────────────────────────────────────────────────────────────
 
-  getClassesByTeacher:    stub,
-  getClassesByStudent:    stub,
-  getClassById:           stub,
-  createClass:            stub,
-  updateClass:            stub,
-  deleteClass:            stub,
-  addStudentToClass:      stub,
-  removeStudentFromClass: stub,
-  addInvitedEmail:        stub,
-  removeInvitedEmail:     stub,
-  validateEmailDomain:    stub,
+  /**
+   * Returns all classes owned by a teacher.
+   * @param {string} teacherId
+   * @returns {Promise<Array>}
+   */
+  getClassesByTeacher: async (teacherId) => {
+    const sb = await getSupabaseClient();
+    const { data, error } = await sb
+      .from("classes")
+      .select("*")
+      .eq("teacher_id", teacherId)
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapClass);
+  },
 
-  // ── Shared Decks — not yet implemented ────────────────────────────────────
+  /**
+   * Returns all classes a student belongs to.
+   * The UI passes currentUser.id (UUID); we resolve to email first because
+   * student_ids stores normalized email strings (what teachers type).
+   * @param {string} userId
+   * @returns {Promise<Array>}
+   */
+  getClassesByStudent: async (userId) => {
+    const sb = await getSupabaseClient();
+    const { data: profile } = await sb
+      .from("user_profiles")
+      .select("email")
+      .eq("id", userId)
+      .single();
+    if (!profile?.email) return [];
+    const email = profile.email.toLowerCase().trim();
+    const { data, error } = await sb
+      .from("classes")
+      .select("*")
+      .filter("student_ids", "cs", JSON.stringify([email]));
+    if (error) throw error;
+    return (data || []).map(mapClass);
+  },
 
-  getSharedDecksByClass:   stub,
-  getSharedDecksByTeacher: stub,
-  getSharedDeckById:       stub,
-  shareDeckToClass:        stub,
-  deleteSharedDeck:        stub,
-  getSharedDeckProgress:   stub,
-  saveSharedDeckProgress:  stub,
-  resetSharedDeckProgress: stub,
-  getAllSharedProgress:     stub,
+  /**
+   * Returns a single class by ID, or null.
+   * @param {string} classId
+   * @returns {Promise<object|null>}
+   */
+  getClassById: async (classId) => {
+    const sb = await getSupabaseClient();
+    const { data, error } = await sb
+      .from("classes")
+      .select("*")
+      .eq("id", classId)
+      .single();
+    if (error || !data) return null;
+    return mapClass(data);
+  },
+
+  /**
+   * Creates a new class and returns the mapped object.
+   * @param {string} teacherId
+   * @param {string} name
+   * @param {string[]} [allowedDomains=[]]
+   * @returns {Promise<object>}
+   */
+  createClass: async (teacherId, name, allowedDomains = []) => {
+    const sb = await getSupabaseClient();
+    const id = `class_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const now = new Date().toISOString();
+    const { data, error } = await sb
+      .from("classes")
+      .insert({
+        id,
+        teacher_id: teacherId,
+        name: (name || "").trim(),
+        allowed_domains: allowedDomains || [],
+        student_ids: [],
+        invited_emails: [],
+        created_at: now,
+        updated_at: now,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return mapClass(data);
+  },
+
+  /**
+   * Generic update — merges camelCase updates into the row.
+   * @param {string} classId
+   * @param {object} updates  camelCase keys (name, studentIds, invitedEmails, etc.)
+   * @returns {Promise<object|null>}
+   */
+  updateClass: async (classId, updates) => {
+    const sb = await getSupabaseClient();
+    const row = {};
+    if ("name"           in updates) row.name            = updates.name;
+    if ("studentIds"     in updates) row.student_ids     = updates.studentIds;
+    if ("invitedEmails"  in updates) row.invited_emails  = updates.invitedEmails;
+    if ("allowedDomains" in updates) row.allowed_domains = updates.allowedDomains;
+    row.updated_at = new Date().toISOString();
+    const { data, error } = await sb
+      .from("classes")
+      .update(row)
+      .eq("id", classId)
+      .select()
+      .single();
+    if (error || !data) return null;
+    return mapClass(data);
+  },
+
+  /**
+   * Deletes a class (shared_decks and progress cascade automatically).
+   * @param {string} classId
+   * @returns {Promise<boolean>}
+   */
+  deleteClass: async (classId) => {
+    const sb = await getSupabaseClient();
+    const { error } = await sb.from("classes").delete().eq("id", classId);
+    if (error) throw error;
+    return true;
+  },
+
+  /**
+   * Adds a student (email string) to the class's student_ids array.
+   * Normalises to lowercase; no-ops if already present.
+   * @param {string} classId
+   * @param {string} studentEmail  the email string the teacher typed
+   * @returns {Promise<boolean>}
+   */
+  addStudentToClass: async (classId, studentEmail) => {
+    const sb = await getSupabaseClient();
+    const normalized = studentEmail.toLowerCase().trim();
+    const { data } = await sb
+      .from("classes")
+      .select("student_ids")
+      .eq("id", classId)
+      .single();
+    if (!data) return false;
+    const ids = data.student_ids || [];
+    if (!ids.includes(normalized)) {
+      ids.push(normalized);
+      await sb
+        .from("classes")
+        .update({ student_ids: ids, updated_at: new Date().toISOString() })
+        .eq("id", classId);
+    }
+    return true;
+  },
+
+  /**
+   * Removes a student (by the exact stored string) from student_ids.
+   * @param {string} classId
+   * @param {string} studentId  the exact string stored (email)
+   * @returns {Promise<boolean>}
+   */
+  removeStudentFromClass: async (classId, studentId) => {
+    const sb = await getSupabaseClient();
+    const { data } = await sb
+      .from("classes")
+      .select("student_ids")
+      .eq("id", classId)
+      .single();
+    if (!data) return false;
+    const ids = (data.student_ids || []).filter(id => id !== studentId);
+    await sb
+      .from("classes")
+      .update({ student_ids: ids, updated_at: new Date().toISOString() })
+      .eq("id", classId);
+    return true;
+  },
+
+  /**
+   * Adds a normalised email to invited_emails.
+   * @param {string} classId
+   * @param {string} email
+   * @returns {Promise<boolean>}
+   */
+  addInvitedEmail: async (classId, email) => {
+    const sb = await getSupabaseClient();
+    const normalized = email.toLowerCase().trim();
+    const { data } = await sb
+      .from("classes")
+      .select("invited_emails")
+      .eq("id", classId)
+      .single();
+    if (!data) return false;
+    const emails = data.invited_emails || [];
+    if (!emails.includes(normalized)) {
+      emails.push(normalized);
+      await sb
+        .from("classes")
+        .update({ invited_emails: emails, updated_at: new Date().toISOString() })
+        .eq("id", classId);
+    }
+    return true;
+  },
+
+  /**
+   * Removes an email from invited_emails (case-insensitive match).
+   * @param {string} classId
+   * @param {string} email
+   * @returns {Promise<boolean>}
+   */
+  removeInvitedEmail: async (classId, email) => {
+    const sb = await getSupabaseClient();
+    const normalized = email.toLowerCase().trim();
+    const { data } = await sb
+      .from("classes")
+      .select("invited_emails")
+      .eq("id", classId)
+      .single();
+    if (!data) return false;
+    const emails = (data.invited_emails || []).filter(e => e.toLowerCase() !== normalized);
+    await sb
+      .from("classes")
+      .update({ invited_emails: emails, updated_at: new Date().toISOString() })
+      .eq("id", classId);
+    return true;
+  },
+
+  /**
+   * Pure logic — no DB call.  Returns true if the email's domain is in
+   * allowedDomains, or if allowedDomains is empty (no restriction).
+   * @param {string} email
+   * @param {string[]} allowedDomains
+   * @returns {boolean}
+   */
+  validateEmailDomain: (email, allowedDomains) => {
+    if (!allowedDomains || allowedDomains.length === 0) return true;
+    const domain = email.toLowerCase().trim().split("@")[1];
+    if (!domain) return false;
+    return allowedDomains.some(d => domain === d.toLowerCase().trim());
+  },
+
+  // ── Shared Decks ──────────────────────────────────────────────────────────
+
+  /**
+   * Returns all shared decks for a class.
+   * @param {string} classId
+   * @returns {Promise<Array>}
+   */
+  getSharedDecksByClass: async (classId) => {
+    const sb = await getSupabaseClient();
+    const { data, error } = await sb
+      .from("shared_decks")
+      .select("*")
+      .eq("class_id", classId)
+      .order("shared_at", { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapSharedDeck);
+  },
+
+  /**
+   * Returns all shared decks created by a teacher.
+   * @param {string} teacherId
+   * @returns {Promise<Array>}
+   */
+  getSharedDecksByTeacher: async (teacherId) => {
+    const sb = await getSupabaseClient();
+    const { data, error } = await sb
+      .from("shared_decks")
+      .select("*")
+      .eq("teacher_id", teacherId)
+      .order("shared_at", { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapSharedDeck);
+  },
+
+  /**
+   * Returns a single shared deck by ID, or null.
+   * @param {string} sharedDeckId
+   * @returns {Promise<object|null>}
+   */
+  getSharedDeckById: async (sharedDeckId) => {
+    const sb = await getSupabaseClient();
+    const { data, error } = await sb
+      .from("shared_decks")
+      .select("*")
+      .eq("id", sharedDeckId)
+      .single();
+    if (error || !data) return null;
+    return mapSharedDeck(data);
+  },
+
+  /**
+   * Shares a deck to a class.  If a shared deck with the same teacher,
+   * class, and deckName already exists it is updated and student progress
+   * is reset; otherwise a new row is inserted.
+   * @param {string} teacherId
+   * @param {string} classId
+   * @param {{ deckName: string, cards: any[] }} deckSnapshot
+   * @returns {Promise<object>}
+   */
+  shareDeckToClass: async (teacherId, classId, deckSnapshot) => {
+    const sb = await getSupabaseClient();
+    const deckName = deckSnapshot.deckName || "Untitled Deck";
+    const now = new Date().toISOString();
+    const snapshot = {
+      deckName,
+      cards: JSON.parse(JSON.stringify(deckSnapshot.cards)),
+    };
+
+    // Check for an existing shared deck with same teacher + class + name
+    const { data: existing_list } = await sb
+      .from("shared_decks")
+      .select("id, deck_snapshot")
+      .eq("teacher_id", teacherId)
+      .eq("class_id", classId);
+
+    const existing = (existing_list || []).find(
+      d => d.deck_snapshot?.deckName === deckName
+    );
+
+    if (existing) {
+      // Update snapshot + timestamp, then reset student progress
+      const { data, error } = await sb
+        .from("shared_decks")
+        .update({ deck_snapshot: snapshot, last_edited_at: now })
+        .eq("id", existing.id)
+        .select()
+        .single();
+      if (error) throw error;
+      await sb.from("shared_deck_progress").delete().eq("shared_deck_id", existing.id);
+      return mapSharedDeck(data);
+    }
+
+    const id = `shared_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const { data, error } = await sb
+      .from("shared_decks")
+      .insert({
+        id,
+        teacher_id: teacherId,
+        class_id: classId,
+        deck_snapshot: snapshot,
+        shared_at: now,
+        last_edited_at: now,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return mapSharedDeck(data);
+  },
+
+  /**
+   * Deletes a shared deck.  Progress rows are removed by ON DELETE CASCADE.
+   * @param {string} sharedDeckId
+   * @returns {Promise<boolean>}
+   */
+  deleteSharedDeck: async (sharedDeckId) => {
+    const sb = await getSupabaseClient();
+    const { error } = await sb
+      .from("shared_decks")
+      .delete()
+      .eq("id", sharedDeckId);
+    if (error) throw error;
+    return true;
+  },
+
+  /**
+   * Returns a student's progress on a shared deck, or null if none.
+   * Shape: { sharedDeckId, studentId, cards, lastStudiedAt }
+   * @param {string} sharedDeckId
+   * @param {string} studentId
+   * @returns {Promise<object|null>}
+   */
+  getSharedDeckProgress: async (sharedDeckId, studentId) => {
+    const sb = await getSupabaseClient();
+    const { data } = await sb
+      .from("shared_deck_progress")
+      .select("*")
+      .eq("shared_deck_id", sharedDeckId)
+      .eq("student_id", studentId)
+      .single();
+    if (!data) return null;
+    return {
+      sharedDeckId: data.shared_deck_id,
+      studentId: data.student_id,
+      cards: data.cards || [],
+      lastStudiedAt: data.last_studied_at
+        ? new Date(data.last_studied_at).getTime()
+        : Date.now(),
+    };
+  },
+
+  /**
+   * Upserts a student's progress on a shared deck.
+   * @param {string} sharedDeckId
+   * @param {string} studentId
+   * @param {any[]} cards
+   * @returns {Promise<void>}
+   */
+  saveSharedDeckProgress: async (sharedDeckId, studentId, cards) => {
+    const sb = await getSupabaseClient();
+    const { error } = await sb
+      .from("shared_deck_progress")
+      .upsert(
+        {
+          shared_deck_id: sharedDeckId,
+          student_id: studentId,
+          cards: JSON.parse(JSON.stringify(cards)),
+          last_studied_at: new Date().toISOString(),
+        },
+        { onConflict: "shared_deck_id,student_id" }
+      );
+    if (error) throw error;
+  },
+
+  /**
+   * Deletes all progress rows for a shared deck (called on re-share).
+   * @param {string} sharedDeckId
+   * @returns {Promise<void>}
+   */
+  resetSharedDeckProgress: async (sharedDeckId) => {
+    const sb = await getSupabaseClient();
+    const { error } = await sb
+      .from("shared_deck_progress")
+      .delete()
+      .eq("shared_deck_id", sharedDeckId);
+    if (error) throw error;
+  },
+
+  /**
+   * Returns all shared deck progress rows (used by teacher analytics).
+   * Shape: [{ sharedDeckId, studentId, cards, lastStudiedAt }]
+   * @returns {Promise<Array>}
+   */
+  getAllSharedProgress: async () => {
+    const sb = await getSupabaseClient();
+    const { data, error } = await sb.from("shared_deck_progress").select("*");
+    if (error) throw error;
+    return (data || []).map(p => ({
+      sharedDeckId: p.shared_deck_id,
+      studentId: p.student_id,
+      cards: p.cards || [],
+      lastStudiedAt: p.last_studied_at
+        ? new Date(p.last_studied_at).getTime()
+        : Date.now(),
+    }));
+  },
 };

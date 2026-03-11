@@ -262,8 +262,8 @@ async function renderAll() {
     };
     await renderClassesScreen(appEl, { setScreen, renderAll, startAssignedDeckStudy, state });
   } else if (state.screen === "sharedStudy") {
-    import("./classes/sharedDecksStore.js").then(async ({ getSharedDeckById, getSharedDeckProgress, saveSharedDeckProgress }) => {
-      const sharedDeck = getSharedDeckById(state.sharedDeckId);
+    import("./data/store/index.js").then(async ({ getSharedDeckById, getSharedDeckProgress, saveSharedDeckProgress }) => {
+      const sharedDeck = await getSharedDeckById(state.sharedDeckId);
       if (!sharedDeck) {
         state.sharedDeckId = null;
         state.screen = "classes";
