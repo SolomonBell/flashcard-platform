@@ -54,6 +54,7 @@
 
 import { getSupabaseClient } from "../../supabaseClient.js";
 import { mapDeck, mapClass, mapSharedDeck } from "../mappers.js";
+import { getCurrentUser as _getAuthCurrentUser } from "../../authStore.js";
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
@@ -363,7 +364,8 @@ export const supabaseStore = {
   getSession:           stub,
   setSession:           stub,
   clearSession:         stub,
-  getCurrentUser:       stub,
+  // Delegates to authStore's synchronous in-memory cache — not a real DB call.
+  getCurrentUser:       () => Promise.resolve(_getAuthCurrentUser()),
 
   // ── Classes ───────────────────────────────────────────────────────────────
 
