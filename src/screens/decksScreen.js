@@ -68,7 +68,11 @@ export function renderDecksScreen(appEl, { renderAll, state, currentUserId }) {
       if (renameId) {
         const current = e.target?.getAttribute("data-deck-title") || "";
         const newTitle = prompt("New deck name:", current);
-        if (newTitle?.trim()) { await renameDeck(currentUserId, renameId, newTitle.trim()); await render(); }
+        if (newTitle?.trim()) {
+          await renameDeck(currentUserId, renameId, newTitle.trim());
+          if (renameId === state.deckId) state.deckTitle = newTitle.trim();
+          await render();
+        }
         return;
       }
 
