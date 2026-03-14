@@ -230,6 +230,20 @@ export const supabaseStore = {
       .eq("user_id", userId);
 
     if (error) throw error;
+
+    // Propagate the new title into any shared deck snapshots that came from this source deck
+    const { data: affectedShared } = await sb
+      .from("shared_decks")
+      .select("id, deck_snapshot")
+      .eq("source_deck_id", deckId);
+
+    for (const row of (affectedShared || [])) {
+      const updatedSnapshot = { ...row.deck_snapshot, deckName: trimmed };
+      await sb
+        .from("shared_decks")
+        .update({ deck_snapshot: updatedSnapshot, last_edited_at: new Date().toISOString() })
+        .eq("id", row.id);
+    }
   },
 
   /**
@@ -664,28 +678,37 @@ export const supabaseStore = {
   shareDeckToClass: async (teacherId, classId, deckSnapshot) => {
     const sb = await getSupabaseClient();
     const deckName = deckSnapshot.deckName || "Untitled Deck";
+    const sourceDeckId = deckSnapshot.deckId || null;
     const now = new Date().toISOString();
     const snapshot = {
       deckName,
       cards: JSON.parse(JSON.stringify(deckSnapshot.cards)),
     };
 
-    // Check for an existing shared deck with same teacher + class + name
+    // Fetch all shared decks for this teacher + class
     const { data: existing_list } = await sb
       .from("shared_decks")
-      .select("id, deck_snapshot")
+      .select("id, deck_snapshot, source_deck_id")
       .eq("teacher_id", teacherId)
       .eq("class_id", classId);
 
-    const existing = (existing_list || []).find(
-      d => d.deck_snapshot?.deckName === deckName
-    );
+    // Primary identity: stable source_deck_id (set once the UI passes deckId)
+    // Fallback: title match for legacy rows that predate this fix
+    let existing = null;
+    if (sourceDeckId) {
+      existing = (existing_list || []).find(d => d.source_deck_id === sourceDeckId);
+    }
+    if (!existing) {
+      existing = (existing_list || []).find(
+        d => !d.source_deck_id && d.deck_snapshot?.deckName === deckName
+      );
+    }
 
     if (existing) {
-      // Update snapshot + timestamp, then reset student progress
+      // Update snapshot (picks up any rename) + backfill source_deck_id, then reset progress
       const { data, error } = await sb
         .from("shared_decks")
-        .update({ deck_snapshot: snapshot, last_edited_at: now })
+        .update({ deck_snapshot: snapshot, last_edited_at: now, source_deck_id: sourceDeckId })
         .eq("id", existing.id)
         .select()
         .single();
@@ -701,6 +724,7 @@ export const supabaseStore = {
         id,
         teacher_id: teacherId,
         class_id: classId,
+        source_deck_id: sourceDeckId,
         deck_snapshot: snapshot,
         shared_at: now,
         last_edited_at: now,

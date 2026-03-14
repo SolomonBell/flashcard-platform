@@ -174,6 +174,7 @@ export async function renderClassesScreen(appEl, { setScreen, renderAll, state }
         await shareDeckToClass(currentUser.id, shareClassId, {
           cards: deck.cards,
           deckName: deck.title || "My deck",
+          deckId: deck.id,
         });
         setMessage(`"${deck.title}" shared to class.`);
         await render();

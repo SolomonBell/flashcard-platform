@@ -1,117 +1,49 @@
+import { getSupabaseClient } from "../supabaseClient.js";
+
+// Kept for any legacy imports that reference this constant.
 export const STORAGE_ANALYTICS_KEY = "knowit_analytics_v1";
+
 const MAX_HISTORY_ENTRIES = 50;
 
-// Analytics data structure:
-// {
-//   sessions: [{ userId, deckContext, deckId, startedAt, endedAt, durationMs, interactions }],
-//   aggregates: { [userId]: { [deckId]: { totalTimeMs, totalSessions, lastStudiedAt, totals, latestStageDistribution, history } } }
-// }
-
-function loadAnalytics() {
-  try {
-    const raw = localStorage.getItem(STORAGE_ANALYTICS_KEY);
-    if (!raw) return { sessions: [], aggregates: {} };
-    return JSON.parse(raw);
-  } catch {
-    return { sessions: [], aggregates: {} };
-  }
-}
-
-function saveAnalytics(data) {
-  try {
-    localStorage.setItem(STORAGE_ANALYTICS_KEY, JSON.stringify(data));
-  } catch (err) {
-    // Fail silently
-  }
-}
+// ── In-memory session state ───────────────────────────────────────────────────
 
 let currentSession = null;
 
+function _newId() {
+  return `sess_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
+// ── Public API (synchronous signatures preserved) ─────────────────────────────
+
 export function startSession({ userId, deckContext, deckId }) {
   try {
-    if (currentSession) {
-      // End any existing session first
-      endSession();
-    }
-    
+    if (currentSession) endSession();
     currentSession = {
+      id: _newId(),
       userId,
-      deckContext,
+      deckContext: String(deckContext ?? ""),
       deckId,
       startedAt: Date.now(),
       endedAt: null,
       durationMs: null,
-      interactions: {
-        answersSubmitted: 0,
-        correctCount: 0,
-        incorrectCount: 0,
-      },
+      interactions: { answersSubmitted: 0, correctCount: 0, incorrectCount: 0 },
     };
-  } catch (err) {
-    // Fail silently
-  }
+  } catch { /* fail silently */ }
 }
 
 export function endSession() {
   try {
     if (!currentSession) return;
-    
     currentSession.endedAt = Date.now();
     currentSession.durationMs = currentSession.endedAt - currentSession.startedAt;
-    
-    const analytics = loadAnalytics();
-    
-    // Add session to sessions array
-    analytics.sessions.push({ ...currentSession });
-    
-    // Update aggregates
-    const { userId, deckId } = currentSession;
-    if (!analytics.aggregates[userId]) {
-      analytics.aggregates[userId] = {};
-    }
-    if (!analytics.aggregates[userId][deckId]) {
-      analytics.aggregates[userId][deckId] = {
-        totalTimeMs: 0,
-        totalSessions: 0,
-        lastStudiedAt: null,
-        totals: {
-          answersSubmitted: 0,
-          correctCount: 0,
-          incorrectCount: 0,
-        },
-        latestStageDistribution: {
-          stage1Count: 0,
-          stage2Count: 0,
-          stage3Count: 0,
-          stage3MasteredCount: 0,
-        },
-        history: [],
-      };
-    }
-    
-    const aggregate = analytics.aggregates[userId][deckId];
-    aggregate.totalTimeMs += currentSession.durationMs;
-    aggregate.totalSessions += 1;
-    aggregate.lastStudiedAt = currentSession.endedAt;
-    aggregate.totals.answersSubmitted += currentSession.interactions.answersSubmitted;
-    aggregate.totals.correctCount += currentSession.interactions.correctCount;
-    aggregate.totals.incorrectCount += currentSession.interactions.incorrectCount;
-    
-    // Add snapshot to history (cap at MAX_HISTORY_ENTRIES)
-    const snapshot = {
-      timestamp: currentSession.endedAt,
-      durationMs: currentSession.durationMs,
+    // Snapshot before clearing so the async write captures the right values
+    const session = {
+      ...currentSession,
       interactions: { ...currentSession.interactions },
     };
-    aggregate.history.push(snapshot);
-    if (aggregate.history.length > MAX_HISTORY_ENTRIES) {
-      aggregate.history = aggregate.history.slice(-MAX_HISTORY_ENTRIES);
-    }
-    
-    saveAnalytics(analytics);
     currentSession = null;
-  } catch (err) {
-    // Fail silently
+    _persistSession(session); // fire-and-forget
+  } catch {
     currentSession = null;
   }
 }
@@ -119,96 +51,184 @@ export function endSession() {
 export function recordAnswer({ isCorrect }) {
   try {
     if (!currentSession) return;
-    
     currentSession.interactions.answersSubmitted += 1;
-    if (isCorrect) {
-      currentSession.interactions.correctCount += 1;
-    } else {
-      currentSession.interactions.incorrectCount += 1;
-    }
-  } catch (err) {
-    // Fail silently
-  }
+    if (isCorrect) { currentSession.interactions.correctCount += 1; }
+    else           { currentSession.interactions.incorrectCount += 1; }
+  } catch { /* fail silently */ }
 }
 
 export function updateStageSnapshot({ cards }) {
   try {
     if (!currentSession) return;
-    
-    const analytics = loadAnalytics();
     const { userId, deckId } = currentSession;
-    
-    if (!analytics.aggregates[userId]) {
-      analytics.aggregates[userId] = {};
-    }
-    if (!analytics.aggregates[userId][deckId]) {
-      analytics.aggregates[userId][deckId] = {
-        totalTimeMs: 0,
-        totalSessions: 0,
-        lastStudiedAt: null,
-        totals: {
-          answersSubmitted: 0,
-          correctCount: 0,
-          incorrectCount: 0,
-        },
-        latestStageDistribution: {
-          stage1Count: 0,
-          stage2Count: 0,
-          stage3Count: 0,
-          stage3MasteredCount: 0,
-        },
-        history: [],
-      };
-    }
-    
-    const aggregate = analytics.aggregates[userId][deckId];
-    
-    // Update stage distribution
-    aggregate.latestStageDistribution = {
-      stage1Count: cards.filter(c => c.stage === 1).length,
-      stage2Count: cards.filter(c => c.stage === 2).length,
-      stage3Count: cards.filter(c => c.stage === 3 && !c.stage3Mastered).length,
-      stage3MasteredCount: cards.filter(c => c.stage === 3 && c.stage3Mastered).length,
+    const dist = {
+      stage1Count:         cards.filter(c => c.stage === 1).length,
+      stage2Count:         cards.filter(c => c.stage === 2).length,
+      stage3Count:         cards.filter(c => c.stage === 3 && !c.stage3Mastered).length,
+      stage3MasteredCount: cards.filter(c => c.stage === 3 &&  c.stage3Mastered).length,
     };
-    
-    saveAnalytics(analytics);
-  } catch (err) {
-    // Fail silently
-  }
+    _saveStageDistribution(userId, deckId, dist); // fire-and-forget
+  } catch { /* fail silently */ }
 }
 
-export function getAnalyticsForUser(userId) {
+// ── Read API (async — not currently called by UI, kept for future use) ────────
+
+export async function getAnalyticsForUser(userId) {
   try {
-    const analytics = loadAnalytics();
-    return analytics.aggregates[userId] || {};
+    const sb = await getSupabaseClient();
+    const { data } = await sb
+      .from("analytics_aggregates")
+      .select("*")
+      .eq("user_id", userId);
+    const result = {};
+    for (const row of (data ?? [])) {
+      result[row.deck_id] = _mapAggregate(row);
+    }
+    return result;
   } catch {
     return {};
   }
 }
 
-export function getSessionsForUser(userId) {
+export async function getSessionsForUser(userId) {
   try {
-    const analytics = loadAnalytics();
-    return analytics.sessions.filter(s => s.userId === userId);
+    const sb = await getSupabaseClient();
+    const { data } = await sb
+      .from("study_sessions")
+      .select("*")
+      .eq("user_id", userId)
+      .order("started_at", { ascending: false });
+    return (data ?? []).map(_mapSession);
   } catch {
     return [];
   }
 }
 
-// Helper to read all analytics (for teacher dashboards)
-export function getAllAnalytics() {
-  return loadAnalytics();
+export async function getAllAnalytics() {
+  try {
+    const sb = await getSupabaseClient();
+    const [{ data: sessions }, { data: aggs }] = await Promise.all([
+      sb.from("study_sessions").select("*").order("started_at", { ascending: false }),
+      sb.from("analytics_aggregates").select("*"),
+    ]);
+    const aggregates = {};
+    for (const row of (aggs ?? [])) {
+      if (!aggregates[row.user_id]) aggregates[row.user_id] = {};
+      aggregates[row.user_id][row.deck_id] = _mapAggregate(row);
+    }
+    return { sessions: (sessions ?? []).map(_mapSession), aggregates };
+  } catch {
+    return { sessions: [], aggregates: {} };
+  }
 }
 
-// Clean up session on page unload/visibility change
-if (typeof window !== "undefined") {
-  window.addEventListener("beforeunload", () => {
-    endSession();
-  });
-  
-  document.addEventListener("visibilitychange", () => {
-    if (document.hidden && currentSession) {
-      endSession();
+// ── Internal async writers (fire-and-forget, never throw) ────────────────────
+
+async function _persistSession(session) {
+  try {
+    const sb = await getSupabaseClient();
+
+    // 1. Record the completed session row
+    await sb.from("study_sessions").insert({
+      id:                 session.id,
+      user_id:            session.userId,
+      deck_id:            session.deckId,
+      deck_context:       session.deckContext,
+      started_at:         new Date(session.startedAt).toISOString(),
+      ended_at:           new Date(session.endedAt).toISOString(),
+      duration_ms:        session.durationMs,
+      answers_submitted:  session.interactions.answersSubmitted,
+      correct_count:      session.interactions.correctCount,
+      incorrect_count:    session.interactions.incorrectCount,
+    });
+
+    // 2. Read current aggregate so we can add to running totals
+    const { data: agg } = await sb
+      .from("analytics_aggregates")
+      .select("total_time_ms, total_sessions, answers_submitted, correct_count, incorrect_count, history")
+      .eq("user_id", session.userId)
+      .eq("deck_id", session.deckId)
+      .single();
+
+    const history = [...(agg?.history ?? [])];
+    history.push({
+      timestamp:   session.endedAt,
+      durationMs:  session.durationMs,
+      interactions: { ...session.interactions },
+    });
+    if (history.length > MAX_HISTORY_ENTRIES) {
+      history.splice(0, history.length - MAX_HISTORY_ENTRIES);
     }
+
+    await sb.from("analytics_aggregates").upsert({
+      user_id:           session.userId,
+      deck_id:           session.deckId,
+      total_time_ms:     (agg?.total_time_ms      ?? 0) + session.durationMs,
+      total_sessions:    (agg?.total_sessions      ?? 0) + 1,
+      last_studied_at:   new Date(session.endedAt).toISOString(),
+      answers_submitted: (agg?.answers_submitted   ?? 0) + session.interactions.answersSubmitted,
+      correct_count:     (agg?.correct_count       ?? 0) + session.interactions.correctCount,
+      incorrect_count:   (agg?.incorrect_count     ?? 0) + session.interactions.incorrectCount,
+      history,
+    }, { onConflict: "user_id,deck_id" });
+  } catch {
+    // Analytics must never crash the app
+  }
+}
+
+/**
+ * Upserts only the stage_distribution field.
+ * On INSERT (no row yet): creates a minimal row with defaults for other columns.
+ * On CONFLICT: updates only stage_distribution, leaves running totals intact.
+ */
+async function _saveStageDistribution(userId, deckId, distribution) {
+  try {
+    const sb = await getSupabaseClient();
+    await sb.from("analytics_aggregates").upsert(
+      { user_id: userId, deck_id: deckId, stage_distribution: distribution },
+      { onConflict: "user_id,deck_id" }
+    );
+  } catch { /* fail silently */ }
+}
+
+// ── Row mappers ───────────────────────────────────────────────────────────────
+
+function _mapSession(row) {
+  return {
+    userId:      row.user_id,
+    deckContext: row.deck_context,
+    deckId:      row.deck_id,
+    startedAt:   new Date(row.started_at).getTime(),
+    endedAt:     row.ended_at ? new Date(row.ended_at).getTime() : null,
+    durationMs:  row.duration_ms,
+    interactions: {
+      answersSubmitted: row.answers_submitted,
+      correctCount:     row.correct_count,
+      incorrectCount:   row.incorrect_count,
+    },
+  };
+}
+
+function _mapAggregate(row) {
+  return {
+    totalTimeMs:    row.total_time_ms,
+    totalSessions:  row.total_sessions,
+    lastStudiedAt:  row.last_studied_at ? new Date(row.last_studied_at).getTime() : null,
+    totals: {
+      answersSubmitted: row.answers_submitted,
+      correctCount:     row.correct_count,
+      incorrectCount:   row.incorrect_count,
+    },
+    latestStageDistribution: row.stage_distribution ?? {},
+    history: row.history ?? [],
+  };
+}
+
+// ── Lifecycle: end session on page hide / unload ──────────────────────────────
+
+if (typeof window !== "undefined") {
+  window.addEventListener("beforeunload", () => { endSession(); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && currentSession) endSession();
   });
 }
