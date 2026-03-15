@@ -7,6 +7,230 @@ import {
   signInWithGoogle,
 } from "./authStore.js";
 
+// ── Bouncing background items ─────────────────────────────────────────────────
+
+const _BOUNCE_ITEMS = [
+  { type: "img",  src: "assets/downtown-school-seattle-logo.png", alt: "Downtown School Seattle", url: "https://www.downtownschoolseattle.org/", h: 72 },
+  { type: "img",  src: "assets/lakeside-logo-1.png",              alt: "Lakeside School",         url: "https://www.lakesideschool.org/",        h: 72 },
+  { type: "img",  src: "assets/lakeside-logo-2.png",              alt: "Lakeside School",         url: "https://www.lakesideschool.org/",        h: 72 },
+  { type: "tile", url: "https://solomonbell.com" },
+];
+const _SPEED = 120;  // px / second
+
+let _bounceStop     = null;  // cancels the running animation
+let _bounceObserver = null;  // MutationObserver for auto-cleanup on login
+
+const _BASE_CSS =
+  "position:fixed;z-index:0;pointer-events:none;display:block;" +
+  "opacity:0.28;transition:opacity 0.2s,transform 0.18s;user-select:none;";
+
+function _buildItemEl(cfg) {
+  const anchor = document.createElement("a");
+  anchor.href     = cfg.url;
+  anchor.target   = "_blank";
+  anchor.rel      = "noopener noreferrer";
+  anchor.tabIndex = -1;
+
+  if (cfg.type === "img") {
+    anchor.style.cssText = _BASE_CSS;
+    const img = document.createElement("img");
+    img.src       = cfg.src;
+    img.alt       = cfg.alt;
+    img.draggable = false;
+    img.style.cssText = `height:${cfg.h}px;width:auto;display:block;`;
+    anchor.appendChild(img);
+  } else {
+    // Promo tile
+    anchor.style.cssText =
+      _BASE_CSS +
+      "width:110px;height:104px;border-radius:12px;box-sizing:border-box;" +
+      "background:#2563eb;box-shadow:inset 0 1px 0 rgba(255,255,255,0.15),0 1px 4px rgba(0,0,0,0.2);" +
+      "display:flex;align-items:center;justify-content:center;" +
+      "padding:10px 14px;text-align:center;text-decoration:none;";
+    anchor.innerHTML =
+      `<span style="color:#fff;font-size:13px;font-weight:700;line-height:1.4;pointer-events:none;">Want Your<br>Logo Here?</span>`;
+  }
+
+  document.body.appendChild(anchor);
+  return anchor;
+}
+
+function _startBouncingLogo(appEl) {
+  // Cancel previous animation + observer before creating new ones
+  if (_bounceStop)     { _bounceStop();               _bounceStop     = null; }
+  if (_bounceObserver) { _bounceObserver.disconnect(); _bounceObserver = null; }
+
+  // Lift the header above the bouncing items
+  const header = document.querySelector(".header");
+  if (header) header.style.zIndex = "10";
+
+  // Build one state object per item
+  const items = _BOUNCE_ITEMS.map((cfg, i) => {
+    // Start at 45° offset so no item begins with purely horizontal or vertical motion.
+    // With 4 items spaced 90° apart starting at 45°, all angles are 45/135/225/315°,
+    // giving every item a non-zero vx and vy from the first frame.
+    const angle = (i / _BOUNCE_ITEMS.length) * Math.PI * 2 + Math.PI / 4;
+    const speed = _SPEED * (0.8 + i * 0.1);   // slightly varied speeds
+    return {
+      el:    _buildItemEl(cfg),
+      x: 0, y: 0,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed * 0.7,
+      ready: false,
+    };
+  });
+
+  let paused  = true;
+  let running = true;
+  let lastTs  = null;
+  let rafId   = null;
+
+  function getTopBound() {
+    return header ? header.getBoundingClientRect().bottom + 4 : 0;
+  }
+
+  function initItem(item) {
+    const lw = item.el.offsetWidth  || 120;
+    const lh = item.el.offsetHeight || 72;
+    const top = getTopBound();
+    item.x = Math.random() * Math.max(1, window.innerWidth  - lw);
+    item.y = top + Math.random() * Math.max(1, window.innerHeight - top - lh);
+    item.el.style.left = `${item.x}px`;
+    item.el.style.top  = `${item.y}px`;
+    item.ready = true;
+  }
+
+  function tick(ts) {
+    if (!running) return;
+    if (lastTs === null) { lastTs = ts; rafId = requestAnimationFrame(tick); return; }
+
+    const dt = Math.min((ts - lastTs) / 1000, 0.05);
+    lastTs = ts;
+
+    if (!paused) {
+      const top = getTopBound();
+
+      // 1. Move each item and resolve wall collisions
+      for (const item of items) {
+        if (!item.ready) continue;
+        const lw = item.el.offsetWidth  || 120;
+        const lh = item.el.offsetHeight || 72;
+
+        item.x += item.vx * dt;
+        item.y += item.vy * dt;
+
+        if (item.x <= 0)                       { item.x = 0;                       item.vx =  Math.abs(item.vx); }
+        if (item.x + lw >= window.innerWidth)  { item.x = window.innerWidth  - lw; item.vx = -Math.abs(item.vx); }
+        if (item.y <= top)                     { item.y = top;                     item.vy =  Math.abs(item.vy); }
+        if (item.y + lh >= window.innerHeight) { item.y = window.innerHeight - lh; item.vy = -Math.abs(item.vy); }
+      }
+
+      // 2. Resolve item-to-item AABB collisions (equal-mass elastic: swap velocity on collision axis)
+      for (let i = 0; i < items.length - 1; i++) {
+        const a = items[i];
+        if (!a.ready) continue;
+        const aw = a.el.offsetWidth || 120, ah = a.el.offsetHeight || 72;
+        for (let j = i + 1; j < items.length; j++) {
+          const b = items[j];
+          if (!b.ready) continue;
+          const bw = b.el.offsetWidth || 120, bh = b.el.offsetHeight || 72;
+
+          const overlapX = (aw / 2 + bw / 2) - Math.abs((a.x + aw / 2) - (b.x + bw / 2));
+          const overlapY = (ah / 2 + bh / 2) - Math.abs((a.y + ah / 2) - (b.y + bh / 2));
+
+          if (overlapX > 0 && overlapY > 0) {
+            if (overlapX < overlapY) {
+              // Separate horizontally, swap vx
+              const sep = overlapX / 2;
+              if (a.x + aw / 2 < b.x + bw / 2) { a.x -= sep; b.x += sep; } else { a.x += sep; b.x -= sep; }
+              [a.vx, b.vx] = [b.vx, a.vx];
+            } else {
+              // Separate vertically, swap vy
+              const sep = overlapY / 2;
+              if (a.y + ah / 2 < b.y + bh / 2) { a.y -= sep; b.y += sep; } else { a.y += sep; b.y -= sep; }
+              [a.vy, b.vy] = [b.vy, a.vy];
+            }
+          }
+        }
+      }
+
+      // 3. Commit positions to DOM
+      for (const item of items) {
+        if (!item.ready) continue;
+        item.el.style.left = `${item.x}px`;
+        item.el.style.top  = `${item.y}px`;
+      }
+    }
+
+    rafId = requestAnimationFrame(tick);
+  }
+
+  // Initialize each item (images wait for load; tile waits one rAF for layout)
+  for (const item of items) {
+    const img = item.el.querySelector("img");
+    if (img) {
+      if (img.complete && img.naturalWidth) {
+        initItem(item);
+      } else {
+        img.addEventListener("load",  () => initItem(item),                          { once: true });
+        img.addEventListener("error", () => { item.el.remove(); item.ready = false; }, { once: true });
+      }
+    } else {
+      requestAnimationFrame(() => initItem(item));
+    }
+  }
+
+  rafId = requestAnimationFrame(tick);
+
+  // Pause/resume all items together based on cursor position over the auth card
+  const card = appEl.querySelector(".card");
+  if (card) {
+    card.addEventListener("mouseenter", () => {
+      paused = false;
+      for (const item of items) {
+        item.el.style.pointerEvents = "none";
+        item.el.style.opacity       = "0.28";
+        item.el.style.transform     = "";
+      }
+    });
+    card.addEventListener("mouseleave", () => {
+      paused = true;
+      for (const item of items) {
+        item.el.style.pointerEvents = "auto";
+        item.el.style.opacity       = "0.55";
+      }
+    });
+  }
+
+  // Hover scale on each item when paused and clickable
+  for (const item of items) {
+    item.el.addEventListener("mouseenter", () => {
+      if (paused) item.el.style.transform = "scale(1.08)";
+    });
+    item.el.addEventListener("mouseleave", () => {
+      item.el.style.transform = "";
+    });
+  }
+
+  // Cleanup
+  _bounceStop = () => {
+    running = false;
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    for (const item of items) item.el.remove();
+    if (header) header.style.zIndex = "";
+  };
+
+  // Auto-cleanup when main.js replaces the auth content on successful login
+  _bounceObserver = new MutationObserver(() => {
+    if (!appEl.querySelector(".card")) {
+      if (_bounceStop) { _bounceStop(); _bounceStop = null; }
+      _bounceObserver.disconnect();
+      _bounceObserver = null;
+    }
+  });
+  _bounceObserver.observe(appEl, { childList: true });
+}
+
 /** Renders a password input wrapped with a show/hide toggle button. */
 function passwordFieldHtml(id, label, placeholder = "") {
   return `
@@ -49,6 +273,14 @@ function infoHtml(msg) {
 }
 
 export function renderAuthScreen(appEl, onLoginSuccess) {
+  // Always stop the animation before handing off to the rest of the app.
+  // This fires synchronously at every exit point so no rAF or DOM node lingers.
+  const succeed = () => {
+    if (_bounceStop)     { _bounceStop();               _bounceStop     = null; }
+    if (_bounceObserver) { _bounceObserver.disconnect(); _bounceObserver = null; }
+    onLoginSuccess();
+  };
+
   let errorMessage = "";
   let infoMessage = "";
   let isSignUp = false;
@@ -56,7 +288,7 @@ export function renderAuthScreen(appEl, onLoginSuccess) {
   // ── Password-reset landing form ────────────────────────────────────────────
   function renderPasswordResetForm() {
     appEl.innerHTML = `
-      <div style="display:flex; justify-content:center; width:100%;">
+      <div style="display:flex;justify-content:center;width:100%;position:relative;z-index:1;">
         <section class="card" style="max-width:400px; width:100%;">
           <h2 style="margin:0; text-align:center;">Set New Password</h2>
 
@@ -74,6 +306,7 @@ export function renderAuthScreen(appEl, onLoginSuccess) {
     `;
 
     wirePasswordToggles(appEl);
+    _startBouncingLogo(appEl);
 
     appEl.querySelector("#newPwForm").addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -100,7 +333,7 @@ export function renderAuthScreen(appEl, onLoginSuccess) {
         return;
       }
 
-      onLoginSuccess();
+      succeed();
     });
   }
 
@@ -112,7 +345,7 @@ export function renderAuthScreen(appEl, onLoginSuccess) {
     }
 
     appEl.innerHTML = `
-      <div style="display:flex; justify-content:center; width:100%;">
+      <div style="display:flex;justify-content:center;width:100%;position:relative;z-index:1;">
         <section class="card" style="max-width:400px; width:100%;">
           <h2 style="margin:0; text-align:center;">${isSignUp ? "Create Account" : "Sign In"}</h2>
 
@@ -162,6 +395,7 @@ export function renderAuthScreen(appEl, onLoginSuccess) {
     `;
 
     wirePasswordToggles(appEl);
+    _startBouncingLogo(appEl);
 
     const form = appEl.querySelector("#authForm");
     const toggleBtn = appEl.querySelector("#toggleForm");
@@ -237,7 +471,7 @@ export function renderAuthScreen(appEl, onLoginSuccess) {
             return;
           }
 
-          onLoginSuccess();
+          succeed();
         } catch (err) {
           errorMessage = "An error occurred. Please try again.";
           render();
@@ -252,7 +486,7 @@ export function renderAuthScreen(appEl, onLoginSuccess) {
             return;
           }
 
-          onLoginSuccess();
+          succeed();
         } catch (err) {
           errorMessage = "An error occurred. Please try again.";
           render();

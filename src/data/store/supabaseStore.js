@@ -521,13 +521,12 @@ export const supabaseStore = {
       .single();
     if (!data) return false;
     const ids = data.student_ids || [];
-    if (!ids.includes(normalized)) {
-      ids.push(normalized);
-      await sb
-        .from("classes")
-        .update({ student_ids: ids, updated_at: new Date().toISOString() })
-        .eq("id", classId);
-    }
+    if (ids.includes(normalized)) return false;
+    ids.push(normalized);
+    await sb
+      .from("classes")
+      .update({ student_ids: ids, updated_at: new Date().toISOString() })
+      .eq("id", classId);
     return true;
   },
 
@@ -714,7 +713,7 @@ export const supabaseStore = {
         .single();
       if (error) throw error;
       await sb.from("shared_deck_progress").delete().eq("shared_deck_id", existing.id);
-      return mapSharedDeck(data);
+      return { ...mapSharedDeck(data), isNew: false };
     }
 
     const id = `shared_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -732,7 +731,7 @@ export const supabaseStore = {
       .select()
       .single();
     if (error) throw error;
-    return mapSharedDeck(data);
+    return { ...mapSharedDeck(data), isNew: true };
   },
 
   /**
@@ -811,6 +810,139 @@ export const supabaseStore = {
       .delete()
       .eq("shared_deck_id", sharedDeckId);
     if (error) throw error;
+  },
+
+  /**
+   * Returns all progress rows for a class with student UUIDs resolved to emails.
+   * Shape: [{ studentEmail, studentId, sharedDeckId, cards, lastStudiedAt }]
+   * @param {string} classId
+   * @returns {Promise<Array>}
+   */
+  getStudentProgressForClass: async (classId) => {
+    try {
+      const sb = await getSupabaseClient();
+      const { data: sharedDecks } = await sb
+        .from("shared_decks")
+        .select("id")
+        .eq("class_id", classId);
+      if (!sharedDecks || sharedDecks.length === 0) return [];
+
+      const sharedDeckIds = sharedDecks.map(d => d.id);
+      const { data: progressRows } = await sb
+        .from("shared_deck_progress")
+        .select("*")
+        .in("shared_deck_id", sharedDeckIds);
+      if (!progressRows || progressRows.length === 0) return [];
+
+      // Resolve student UUIDs → emails via user_profiles
+      const studentUuids = [...new Set(progressRows.map(p => p.student_id))];
+      const { data: profiles } = await sb
+        .from("user_profiles")
+        .select("id, email")
+        .in("id", studentUuids);
+      const emailByUuid = {};
+      for (const p of (profiles || [])) emailByUuid[p.id] = (p.email || "").toLowerCase();
+
+      return progressRows.map(p => ({
+        studentEmail: emailByUuid[p.student_id] ?? p.student_id,
+        studentId: p.student_id,
+        sharedDeckId: p.shared_deck_id,
+        cards: p.cards || [],
+        lastStudiedAt: p.last_studied_at ? new Date(p.last_studied_at).getTime() : null,
+      }));
+    } catch { return []; }
+  },
+
+  /**
+   * Returns study sessions for a set of shared deck IDs.
+   * Gracefully returns [] if the study_sessions table does not yet exist.
+   * Shape: [{ studentId, sharedDeckId, startedAt, answersSubmitted, correctCount, incorrectCount }]
+   * @param {string[]} sharedDeckIds
+   * @returns {Promise<Array>}
+   */
+  getSessionsForSharedDecks: async (sharedDeckIds) => {
+    if (!sharedDeckIds || sharedDeckIds.length === 0) return [];
+    try {
+      const sb = await getSupabaseClient();
+      const { data, error } = await sb
+        .from("study_sessions")
+        .select("user_id, deck_id, started_at, answers_submitted, correct_count, incorrect_count")
+        .in("deck_id", sharedDeckIds)
+        .eq("deck_context", "shared");
+      if (error) return [];
+      return (data || []).map(r => ({
+        studentId: r.user_id,
+        sharedDeckId: r.deck_id,
+        startedAt: r.started_at,
+        answersSubmitted: r.answers_submitted || 0,
+        correctCount: r.correct_count || 0,
+        incorrectCount: r.incorrect_count || 0,
+      }));
+    } catch { return []; }
+  },
+
+  /**
+   * Upserts per-card attempt stats for a student on a shared deck.
+   * Writes absolute cumulative totals — caller maintains running counts in
+   * memory (sharedState.cards) before calling this.
+   * Safe to fire-and-forget; errors are logged but not thrown.
+   * @param {{ sharedDeckId:string, studentId:string, cardId:string, attempts:number, correctCount:number, incorrectCount:number }}
+   * @returns {Promise<void>}
+   */
+  upsertCardAttemptStat: async ({ sharedDeckId, studentId, cardId, attempts, correctCount, incorrectCount }) => {
+    console.log("[DBG card_attempt_stats WRITE]", { sharedDeckId, studentId, cardId, attempts, correctCount, incorrectCount });
+    try {
+      const sb = await getSupabaseClient();
+      const now = new Date().toISOString();
+      const { error } = await sb
+        .from("card_attempt_stats")
+        .upsert(
+          {
+            shared_deck_id:   sharedDeckId,
+            student_id:       studentId,
+            card_id:          cardId,
+            attempts:         attempts,
+            correct_count:    correctCount,
+            incorrect_count:  incorrectCount,
+            last_answered_at: now,
+            updated_at:       now,
+          },
+          { onConflict: "shared_deck_id,student_id,card_id" }
+        );
+      if (error) console.warn("[DBG card_attempt_stats WRITE] FAILED:", error.code, error.message, error.details);
+      else console.log("[DBG card_attempt_stats WRITE] OK");
+    } catch (e) { console.warn("[DBG card_attempt_stats WRITE] EXCEPTION:", e); }
+  },
+
+  /**
+   * Returns card attempt stats for a shared deck, optionally filtered to
+   * specific student UUIDs (pass null for all students = class scope).
+   * Shape: [{ cardId, studentId, attempts, correctCount, incorrectCount }]
+   * @param {{ sharedDeckId: string, studentIds?: string[]|null }}
+   * @returns {Promise<Array>}
+   */
+  getCardAttemptStatsForDeck: async ({ sharedDeckId, studentIds = null }) => {
+    console.log("[DBG card_attempt_stats READ]", { sharedDeckId, studentIds });
+    try {
+      const sb = await getSupabaseClient();
+      let query = sb
+        .from("card_attempt_stats")
+        .select("card_id, student_id, attempts, correct_count, incorrect_count")
+        .eq("shared_deck_id", sharedDeckId);
+      if (studentIds) {
+        query = query.in("student_id", studentIds);
+      }
+      const { data, error } = await query;
+      console.log("[DBG card_attempt_stats READ] result:", error ? `ERROR ${error.code}: ${error.message}` : `${data?.length ?? 0} rows`);
+      if (error) return [];
+      return (data || []).map(r => ({
+        cardId:        r.card_id,
+        studentId:     r.student_id,
+        attempts:      r.attempts      || 0,
+        correctCount:  r.correct_count || 0,
+        incorrectCount: r.incorrect_count || 0,
+      }));
+    } catch { return []; }
   },
 
   /**

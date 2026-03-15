@@ -78,8 +78,13 @@ export const localStore = {
   getSharedDeckById:        wrap(getSharedDeckById),
   shareDeckToClass:         wrap(shareDeckToClass),
   deleteSharedDeck:         wrap(deleteSharedDeck),
-  getSharedDeckProgress:    wrap(getSharedDeckProgress),
-  saveSharedDeckProgress:   wrap(saveSharedDeckProgress),
-  resetSharedDeckProgress:  wrap(resetSharedDeckProgress),
-  getAllSharedProgress:      wrap(getAllSharedProgress),
+  getSharedDeckProgress:         wrap(getSharedDeckProgress),
+  saveSharedDeckProgress:        wrap(saveSharedDeckProgress),
+  resetSharedDeckProgress:       wrap(resetSharedDeckProgress),
+  getAllSharedProgress:           wrap(getAllSharedProgress),
+  // Analytics queries — not implemented in localStorage mode
+  getStudentProgressForClass:    async () => [],
+  getSessionsForSharedDecks:     async () => [],
+  upsertCardAttemptStat:         async () => {},
+  getCardAttemptStatsForDeck:    async () => [],
 };

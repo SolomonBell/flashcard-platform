@@ -171,12 +171,14 @@ export async function renderClassesScreen(appEl, { setScreen, renderAll, state }
           await render();
           return;
         }
-        await shareDeckToClass(currentUser.id, shareClassId, {
+        const shareResult = await shareDeckToClass(currentUser.id, shareClassId, {
           cards: deck.cards,
           deckName: deck.title || "My deck",
           deckId: deck.id,
         });
-        setMessage(`"${deck.title}" shared to class.`);
+        setMessage(shareResult?.isNew === false
+          ? `"${deck.title}" is already shared to this class.`
+          : `"${deck.title}" shared to class.`);
         await render();
         return;
       }
@@ -186,9 +188,9 @@ export async function renderClassesScreen(appEl, { setScreen, renderAll, state }
         const input = appEl.querySelector(`.student-id-input[data-class-id="${addStudentClassId}"]`);
         const studentId = input?.value?.trim();
         if (!studentId) return;
-        await addStudentToClass(addStudentClassId, studentId);
+        const added = await addStudentToClass(addStudentClassId, studentId);
         input.value = "";
-        setMessage("Student added.");
+        setMessage(added ? "Student added." : "Student already in this class.");
         await render();
         return;
       }

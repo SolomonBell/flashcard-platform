@@ -1,28 +1,73 @@
-import { getClassesByTeacher, getSharedDecksByClass } from "../data/store/index.js";
+import { getClassesByTeacher, getSharedDecksByClass, getStudentProgressForClass, getSessionsForSharedDecks, getCardAttemptStatsForDeck } from "../data/store/index.js";
 import { escapeHtml } from "../utils.js";
 
-// ── Data functions (replaceable with Supabase later) ──────────────────────
+// ── Data functions ─────────────────────────────────────────────────────────
 
 async function buildAnalyticsViewModel(teacherId) {
   const classes = await getClassesByTeacher(teacherId);
-  return Promise.all(classes.map(async cls => ({
-    id: cls.id,
-    name: cls.name,
-    totalStudents: cls.studentIds.length,
-    sharedDecksCount: (await getSharedDecksByClass(cls.id)).length,
-    students: cls.studentIds,
-  })));
+  return Promise.all(classes.map(async cls => {
+    const sharedDecks = await getSharedDecksByClass(cls.id);
+    const sharedDeckIds = sharedDecks.map(d => d.id);
+
+    // Real engagement data
+    const progressRows = await getStudentProgressForClass(cls.id);
+    const sessionRows  = await getSessionsForSharedDecks(sharedDeckIds);
+
+    // email → [UUIDs] (a student could have multiple sessions from different logins)
+    const emailToUuids = {};
+    for (const p of progressRows) {
+      if (!emailToUuids[p.studentEmail]) emailToUuids[p.studentEmail] = [];
+      if (!emailToUuids[p.studentEmail].includes(p.studentId))
+        emailToUuids[p.studentEmail].push(p.studentId);
+    }
+
+    // Active = has started at least one shared deck in this class
+    const activeEmails = new Set(progressRows.map(p => p.studentEmail));
+
+    // Per-student aggregates
+    const studentStats = {};
+    for (const email of cls.studentIds) {
+      const myProgress = progressRows.filter(p => p.studentEmail === email);
+      const myUuids    = emailToUuids[email] ?? [];
+      const mySessions = sessionRows.filter(s => myUuids.includes(s.studentId));
+
+      const lastStudiedAt = myProgress.reduce(
+        (max, p) => (!max || (p.lastStudiedAt && p.lastStudiedAt > max)) ? p.lastStudiedAt : max,
+        null
+      );
+      const totalAnswers = mySessions.reduce((sum, s) => sum + s.answersSubmitted, 0);
+      const totalCorrect = mySessions.reduce((sum, s) => sum + s.correctCount, 0);
+
+      studentStats[email] = {
+        decksStudied:   myProgress.length,
+        cardsAttempted: totalAnswers > 0 ? totalAnswers : null,
+        accuracy:       totalAnswers > 0 ? Math.round((totalCorrect / totalAnswers) * 100) : null,
+        lastStudiedAt,
+      };
+    }
+
+    return {
+      id:              cls.id,
+      name:            cls.name,
+      totalStudents:   cls.studentIds.length,
+      sharedDecksCount: sharedDecks.length,
+      students:        cls.studentIds,
+      activeStudents:  activeEmails.size,
+      studentStats,
+      _progressRows:   progressRows,
+      _sessionRows:    sessionRows,
+    };
+  }));
 }
 
 /**
  * Returns shared decks for a class as { id, name, cards[] }.
- * Replace with Supabase query when ready.
  */
 async function listSharedDecksForClass(classId) {
   const sharedDecks = await getSharedDecksByClass(classId);
   return sharedDecks.map(sd => ({
-    id: sd.id,
-    name: sd.deckSnapshot?.deckName || "Unnamed Deck",
+    id:    sd.id,
+    name:  sd.deckSnapshot?.deckName || "Unnamed Deck",
     cards: sd.deckSnapshot?.cards ?? [],
   }));
 }
@@ -34,17 +79,14 @@ const PALETTE = [
 ];
 
 /**
- * Returns stacked daily activity data per student for the last `days` days.
- * Replace body with Supabase query when ready.
+ * Builds stacked daily activity data from real session rows.
+ * "activity" = answers_submitted per student per day.
+ * Falls back to all-zero counts (renders "No activity data yet.") when sessions are absent.
  *
- * @param {{ classId: string, deckId?: string, studentIds: string[], days?: number }}
- * @returns {{
- *   days: string[],
- *   students: { id: string, label: string }[],
- *   counts: Record<string, Record<string, number>>
- * }}
+ * @param {{ studentIds: string[], sessionRows: any[], progressRows: any[], days?: number }}
+ * @returns {{ days: string[], students: { id: string, label: string }[], counts: Record<string, Record<string, number>> }}
  */
-function getDailyActivityStack({ classId, deckId, studentIds, days = 14 }) {
+function buildActivityStack({ studentIds, sessionRows, progressRows, days = 14 }) {
   const daysList = [];
   const now = Date.now();
   for (let i = days - 1; i >= 0; i--) {
@@ -53,17 +95,30 @@ function getDailyActivityStack({ classId, deckId, studentIds, days = 14 }) {
   }
 
   const students = studentIds.map(id => ({ id, label: id }));
+
+  // Build email → UUIDs from progress rows
+  const emailToUuids = {};
+  for (const p of progressRows) {
+    if (!emailToUuids[p.studentEmail]) emailToUuids[p.studentEmail] = [];
+    if (!emailToUuids[p.studentEmail].includes(p.studentId))
+      emailToUuids[p.studentEmail].push(p.studentId);
+  }
+
   const counts = {};
   for (const day of daysList) {
     counts[day] = {};
     for (const s of students) {
-      const seedStr = classId + (deckId || "") + s.id + day;
-      const seed = seedStr.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
-      counts[day][s.id] = Math.max(0, Math.round(
-        3 + 2 * Math.sin(seed * 0.3) + 2 * Math.cos(seed * 0.7)
-      ));
+      const uuids = emailToUuids[s.id] || [];
+      const daySessions = sessionRows.filter(
+        sess =>
+          uuids.includes(sess.studentId) &&
+          typeof sess.startedAt === "string" &&
+          sess.startedAt.slice(0, 10) === day
+      );
+      counts[day][s.id] = daySessions.reduce((sum, sess) => sum + (sess.answersSubmitted || 0), 0);
     }
   }
+
   return { days: daysList, students, counts };
 }
 
@@ -85,37 +140,69 @@ function getDisplayStudents({ students, counts, days }) {
 }
 
 /**
- * Returns per-card accuracy stats for a specific shared deck.
- * Uses deterministic demo data until attempt tracking is implemented.
- * Replace body with Supabase query when ready.
- * @param {{ classId: string, deckId: string, scope?: { type: "class" } | { type: "student", email: string } }}
+ * Returns per-card cumulative accuracy stats for a specific shared deck.
+ * Reads from card_attempt_stats (the dedicated per-card table written on every answer).
+ * Cards with no attempts yet show accuracy: null (renders as "—" in the table).
+ *
+ * @param {{ classId: string, deckId: string, scope?: { type: "class" } | { type: "student", email: string }, progressRows: any[] }}
  * @returns {{ cardId, front, attempts, correct, accuracy }[]}
  */
-async function getCardAccuracyStats({ classId, deckId, scope }) {
+async function getCardAccuracyStats({ classId, deckId, scope, progressRows }) {
   const sharedDecks = await getSharedDecksByClass(classId);
   const sd = sharedDecks.find(d => d.id === deckId);
   if (!sd) return [];
 
-  const scopeSeed = (scope?.type === "student") ? scope.email : "";
-  const seedStr = classId + deckId + scopeSeed;
-  const seed = seedStr.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
-  return (sd.deckSnapshot?.cards ?? []).map((card, idx) => {
-    const attempts = 5 + ((seed + idx * 7) % 15);
-    const correct = Math.round(attempts * (0.4 + ((seed + idx * 13) % 60) / 100));
+  // For student scope, resolve email → student UUID(s) via progressRows
+  let studentIds = null;
+  if (scope?.type === "student") {
+    studentIds = [...new Set(
+      progressRows
+        .filter(p => p.sharedDeckId === deckId && p.studentEmail === scope.email)
+        .map(p => p.studentId)
+    )];
+    if (studentIds.length === 0) studentIds = ["__nomatch__"];
+  }
+
+  // Fetch per-card stats from the dedicated table
+  const statRows = await getCardAttemptStatsForDeck({ sharedDeckId: deckId, studentIds });
+
+  // Aggregate by cardId (sums across all students for class scope)
+  const byCard = {};
+  for (const row of statRows) {
+    if (!byCard[row.cardId]) byCard[row.cardId] = { attempts: 0, correctCount: 0 };
+    byCard[row.cardId].attempts    += row.attempts;
+    byCard[row.cardId].correctCount += row.correctCount;
+  }
+
+  return (sd.deckSnapshot?.cards ?? []).map(card => {
+    const agg = byCard[card.id];
+    const totalAttempts = agg?.attempts    ?? 0;
+    const totalCorrect  = agg?.correctCount ?? 0;
     return {
-      cardId: card.id,
-      front: card.front || "(empty)",
-      attempts,
-      correct,
-      accuracy: attempts > 0 ? Math.round((correct / attempts) * 100) : null,
+      cardId:   card.id,
+      front:    card.front || "(empty)",
+      attempts: totalAttempts,
+      correct:  totalCorrect,
+      accuracy: totalAttempts > 0 ? Math.round((totalCorrect / totalAttempts) * 100) : null,
     };
   });
+}
+
+/** Formats a Unix-ms timestamp as a short relative date string. */
+function formatRelativeDate(ts) {
+  if (!ts) return "—";
+  const d = new Date(ts);
+  const diffDays = Math.floor((Date.now() - d) / 86_400_000);
+  if (diffDays === 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 // ── SVG stacked bar chart ─────────────────────────────────────────────────
 
 /**
- * Renders a stacked SVG bar chart from getDailyActivityStack output.
+ * Renders a stacked SVG bar chart from buildActivityStack output.
  * Returns an HTML string (SVG + legend).
  */
 function renderStackedActivityChart(stack) {
@@ -140,8 +227,8 @@ function renderStackedActivityChart(stack) {
       No activity data yet.</p>`;
   }
 
-  const W = 560, H = 180;
-  const padL = 32, padB = 28, padT = 10, padR = 8;
+  const W = 560, H = 194;
+  const padL = 32, padB = 42, padT = 10, padR = 8;
   const chartW = W - padL - padR;
   const chartH = H - padT - padB;
   const slotW = chartW / days.length;
@@ -174,7 +261,7 @@ function renderStackedActivityChart(stack) {
     if (i % 3 !== 0) return "";
     const [, mm, dd] = day.split("-");
     const x = padL + i * slotW + slotW / 2;
-    return `<text x="${x.toFixed(1)}" y="${H - 6}" text-anchor="middle"
+    return `<text x="${x.toFixed(1)}" y="${padT + chartH + 16}" text-anchor="middle"
       font-size="10" fill="var(--muted,#6b7280)">${mm}/${dd}</text>`;
   }).join("");
 
@@ -195,9 +282,15 @@ function renderStackedActivityChart(stack) {
     </div>`;
   }).join("");
 
+  const xAxisLabel = `<text x="${(padL + W - padR) / 2}" y="${H - 2}"
+    text-anchor="middle" font-size="9" fill="var(--muted,#6b7280)">Date</text>`;
+  const yAxisLabel = `<text x="10" y="${padT + chartH / 2}"
+    text-anchor="middle" font-size="9" fill="var(--muted,#6b7280)"
+    transform="rotate(-90, 10, ${padT + chartH / 2})">Answers</text>`;
+
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;"
-    role="img" aria-label="14-day stacked student activity chart">
-    ${yLabels}${bars}${xLabels}
+    role="img" aria-label="14-day stacked student activity chart: answers submitted per student per day">
+    ${yAxisLabel}${yLabels}${bars}${xLabels}${xAxisLabel}
   </svg>
   <div style="display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:8px;">
     ${legend}
@@ -229,13 +322,20 @@ export function renderAnalyticsScreen(appEl, { currentUserId }) {
 
     const selectedDeck = sharedDecks.find(d => d.id === selectedDeckId) ?? null;
 
+    // Pull pre-fetched engagement data from view model
+    const progressRows = cls?._progressRows ?? [];
+    const sessionRows  = cls?._sessionRows  ?? [];
+
     // Build per-deck panels
     let chartHtml = "";
     let accuracyHtml = "";
 
     if (cls) {
-      const stack = getDailyActivityStack({
-        classId: cls.id, deckId: selectedDeckId, studentIds: cls.students, days: 14,
+      const stack = buildActivityStack({
+        studentIds:  cls.students,
+        sessionRows,
+        progressRows,
+        days: 14,
       });
       chartHtml = `
         <div style="margin-top:20px;">
@@ -248,7 +348,7 @@ export function renderAnalyticsScreen(appEl, { currentUserId }) {
         const scope = selectedScope === "class"
           ? { type: "class" }
           : { type: "student", email: selectedScope };
-        const stats = await getCardAccuracyStats({ classId: cls.id, deckId: selectedDeckId, scope });
+        const stats = await getCardAccuracyStats({ classId: cls.id, deckId: selectedDeckId, scope, progressRows });
         const sorted = [...stats].sort((a, b) =>
           cardSortAsc
             ? (b.accuracy ?? -1) - (a.accuracy ?? -1)
@@ -361,7 +461,7 @@ export function renderAnalyticsScreen(appEl, { currentUserId }) {
                 <div class="small" style="color:var(--muted);margin-top:2px;">Shared Decks</div>
               </div>
               <div style="border:1px solid var(--border);border-radius:10px;padding:12px;text-align:center;">
-                <div style="font-size:24px;font-weight:700;color:var(--muted);">—</div>
+                <div style="font-size:24px;font-weight:700;">${cls.activeStudents}</div>
                 <div class="small" style="color:var(--muted);margin-top:2px;">Active Students</div>
               </div>
             </div>
@@ -387,14 +487,21 @@ export function renderAnalyticsScreen(appEl, { currentUserId }) {
                   ${cls.students.length === 0
                     ? `<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--muted);">
                         No students in this class yet.</td></tr>`
-                    : cls.students.map(sid => `
+                    : cls.students.map(sid => {
+                        const st = cls.studentStats?.[sid] ?? {};
+                        const decksStudied   = st.decksStudied   != null ? String(st.decksStudied)   : "—";
+                        const cardsAttempted = st.cardsAttempted != null ? String(st.cardsAttempted) : "—";
+                        const accuracy       = st.accuracy       != null ? st.accuracy + "%"         : "—";
+                        const lastActive     = formatRelativeDate(st.lastStudiedAt);
+                        return `
                       <tr style="border-bottom:1px solid var(--border);">
                         <td style="padding:8px 6px;">${escapeHtml(sid)}</td>
-                        <td style="text-align:center;padding:8px 6px;color:var(--muted);">—</td>
-                        <td style="text-align:center;padding:8px 6px;color:var(--muted);">—</td>
-                        <td style="text-align:center;padding:8px 6px;color:var(--muted);">—</td>
-                        <td style="text-align:center;padding:8px 6px;color:var(--muted);">—</td>
-                      </tr>`).join("")}
+                        <td style="text-align:center;padding:8px 6px;${decksStudied   === "—" ? "color:var(--muted);" : ""}">${decksStudied}</td>
+                        <td style="text-align:center;padding:8px 6px;${cardsAttempted === "—" ? "color:var(--muted);" : ""}">${cardsAttempted}</td>
+                        <td style="text-align:center;padding:8px 6px;${accuracy       === "—" ? "color:var(--muted);" : ""}">${accuracy}</td>
+                        <td style="text-align:center;padding:8px 6px;${lastActive     === "—" ? "color:var(--muted);" : ""}">${lastActive}</td>
+                      </tr>`;
+                      }).join("")}
                 </tbody>
               </table>
             </div>
