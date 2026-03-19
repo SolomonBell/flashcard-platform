@@ -97,6 +97,9 @@ function _startBouncingLogo(appEl) {
     item.y = top + Math.random() * Math.max(1, window.innerHeight - top - lh);
     item.el.style.left = `${item.x}px`;
     item.el.style.top  = `${item.y}px`;
+    // Sync to initial paused state: items are clickable and fully visible from the start
+    item.el.style.pointerEvents = "auto";
+    item.el.style.opacity       = "0.55";
     item.ready = true;
   }
 
@@ -182,30 +185,44 @@ function _startBouncingLogo(appEl) {
 
   rafId = requestAnimationFrame(tick);
 
-  // Pause/resume all items together based on cursor position over the auth card
+  // Pause/resume all items together based on whether cursor is over the auth card.
+  // Uses document.mousemove instead of card mouseenter/mouseleave because the outer
+  // wrapper div has pointer-events:none, which prevents card events from firing reliably.
   const card = appEl.querySelector(".card");
-  if (card) {
-    card.addEventListener("mouseenter", () => {
+  let _cardHoverState = false;
+  const _onMouseMove = (e) => {
+    if (!card) return;
+    const r = card.getBoundingClientRect();
+    const over = e.clientX >= r.left && e.clientX <= r.right &&
+                 e.clientY >= r.top  && e.clientY <= r.bottom;
+    if (over === _cardHoverState) return;
+    _cardHoverState = over;
+    if (over) {
       paused = false;
       for (const item of items) {
         item.el.style.pointerEvents = "none";
         item.el.style.opacity       = "0.28";
         item.el.style.transform     = "";
       }
-    });
-    card.addEventListener("mouseleave", () => {
+    } else {
       paused = true;
       for (const item of items) {
         item.el.style.pointerEvents = "auto";
         item.el.style.opacity       = "0.55";
       }
-    });
-  }
+    }
+  };
+  document.addEventListener("mousemove", _onMouseMove);
 
-  // Hover scale on each item when paused and clickable
+  // Hover scale on each item when paused and clickable.
+  // mousemove is a fallback for when the cursor was already over an item
+  // when pointer-events changed from none to auto (mouseenter won't re-fire in that case).
   for (const item of items) {
     item.el.addEventListener("mouseenter", () => {
       if (paused) item.el.style.transform = "scale(1.08)";
+    });
+    item.el.addEventListener("mousemove", () => {
+      if (paused && !item.el.style.transform) item.el.style.transform = "scale(1.08)";
     });
     item.el.addEventListener("mouseleave", () => {
       item.el.style.transform = "";
@@ -218,6 +235,7 @@ function _startBouncingLogo(appEl) {
     if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
     for (const item of items) item.el.remove();
     if (header) header.style.zIndex = "";
+    document.removeEventListener("mousemove", _onMouseMove);
   };
 
   // Auto-cleanup when main.js replaces the auth content on successful login
@@ -260,15 +278,19 @@ function wirePasswordToggles(appEl) {
   });
 }
 
+function toTitleCase(str) {
+  return str.replace(/\b\w/g, c => c.toUpperCase());
+}
+
 function errorHtml(msg) {
   return msg
-    ? `<div style="color:#dc2626; font-size:13px; margin-top:12px; padding:8px; background:#fff1f2; border:1px solid #fecdd3; border-radius:8px;">${msg}</div>`
+    ? `<div style="margin-top:12px; text-align:center;"><span style="display:inline-block; color:#dc2626; font-size:13px; padding:6px 10px; background:#fff1f2; border:1px solid #fecdd3; border-radius:8px;">${toTitleCase(msg)}</span></div>`
     : "";
 }
 
 function infoHtml(msg) {
   return msg
-    ? `<div style="color:#166534; font-size:13px; margin-top:12px; padding:8px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px;">${msg}</div>`
+    ? `<div style="color:#166534; font-size:13px; margin-top:12px; text-align:center;">${toTitleCase(msg)}</div>`
     : "";
 }
 
@@ -288,21 +310,19 @@ export function renderAuthScreen(appEl, onLoginSuccess) {
   // ── Password-reset landing form ────────────────────────────────────────────
   function renderPasswordResetForm() {
     appEl.innerHTML = `
-      <div style="display:flex;justify-content:center;width:100%;position:relative;z-index:1;">
-        <section class="card" style="max-width:400px; width:100%;">
-          <h2 style="margin:0; text-align:center;">Set New Password</h2>
+      <section class="card" style="max-width:400px;width:100%;margin:0 auto;display:block;position:relative;z-index:2;">
+        <h2 style="margin:0; text-align:center;">Set New Password</h2>
 
-          ${errorHtml(errorMessage)}
+        ${errorHtml(errorMessage)}
 
-          <form id="newPwForm" style="margin-top:16px;">
-            ${passwordFieldHtml("newPassword", "New Password")}
-            ${passwordFieldHtml("confirmNewPassword", "Confirm New Password")}
-            <div class="btns" style="margin-top:16px; justify-content:center;">
-              <button type="submit" class="primary">Update Password</button>
-            </div>
-          </form>
-        </section>
-      </div>
+        <form id="newPwForm" style="margin-top:16px;">
+          ${passwordFieldHtml("newPassword", "New Password")}
+          ${passwordFieldHtml("confirmNewPassword", "Confirm New Password")}
+          <div class="btns" style="margin-top:16px; justify-content:center;">
+            <button type="submit" class="primary">Update Password</button>
+          </div>
+        </form>
+      </section>
     `;
 
     wirePasswordToggles(appEl);
@@ -345,53 +365,51 @@ export function renderAuthScreen(appEl, onLoginSuccess) {
     }
 
     appEl.innerHTML = `
-      <div style="display:flex;justify-content:center;width:100%;position:relative;z-index:1;">
-        <section class="card" style="max-width:400px; width:100%;">
-          <h2 style="margin:0; text-align:center;">${isSignUp ? "Create Account" : "Sign In"}</h2>
+      <section class="card" style="max-width:400px;width:100%;margin:0 auto;display:block;position:relative;z-index:2;">
+        <h2 style="margin:0; text-align:center;">${isSignUp ? "Create Account" : "Sign In"}</h2>
 
-          ${errorHtml(errorMessage)}
-          ${infoHtml(infoMessage)}
+        ${errorHtml(errorMessage)}
+        ${infoHtml(infoMessage)}
 
-          <form id="authForm" style="margin-top:16px;">
-            <label class="label" for="email">Email</label>
-            <input type="email" id="email" name="email" required style="margin-bottom:12px;" />
+        <form id="authForm" style="margin-top:16px;">
+          <label class="label" for="email">Email</label>
+          <input type="email" id="email" name="email" required style="margin-bottom:12px;" />
 
-            ${passwordFieldHtml("password", "Password")}
+          ${passwordFieldHtml("password", "Password")}
 
-            ${!isSignUp ? `
-              <div style="text-align:right; margin-top:-8px; margin-bottom:12px;">
-                <button type="button" id="forgotPwBtn"
-                  style="background:none; border:none; padding:0; font-size:12px;
-                         color:var(--muted, #888); cursor:pointer; text-decoration:underline;">
-                  Forgot password?
-                </button>
-              </div>
-            ` : ""}
-
-            ${isSignUp ? `
-              ${passwordFieldHtml("confirmPassword", "Confirm Password")}
-              <label class="label" for="role">Role</label>
-              <select id="role" name="role" required style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:10px; font-size:14px; margin-bottom:12px;">
-                <option value="student">Student</option>
-                <option value="teacher">Teacher</option>
-              </select>
-            ` : ""}
-
-            <div class="btns" style="margin-top:16px; flex-wrap:nowrap; align-items:center; justify-content:center;">
-              <button type="submit" class="primary" id="submitBtn">
-                ${isSignUp ? "Create Account" : "Sign In"}
-              </button>
-              <button type="button" id="toggleForm">
-                ${isSignUp ? "Sign In" : "Sign Up"}
+          ${!isSignUp ? `
+            <div style="text-align:right; margin-top:-8px; margin-bottom:12px;">
+              <button type="button" id="forgotPwBtn"
+                style="background:none; border:none; padding:0; font-size:12px;
+                       color:var(--muted, #888); cursor:pointer; text-decoration:underline;">
+                Forgot Password?
               </button>
             </div>
+          ` : ""}
 
-            <div style="text-align:center; margin-top:10px;">
-              <button type="button" id="googleSignInBtn">Continue with Google</button>
-            </div>
-          </form>
-        </section>
-      </div>
+          ${isSignUp ? `
+            ${passwordFieldHtml("confirmPassword", "Confirm Password")}
+            <label class="label" for="role">Role</label>
+            <select id="role" name="role" required style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:10px; font-size:14px; margin-bottom:12px;">
+              <option value="student">Student</option>
+              <option value="teacher">Teacher</option>
+            </select>
+          ` : ""}
+
+          <div class="btns" style="margin-top:16px; flex-wrap:nowrap; align-items:center; justify-content:center;">
+            <button type="submit" class="primary" id="submitBtn">
+              ${isSignUp ? "Create Account" : "Sign In"}
+            </button>
+            <button type="button" id="toggleForm">
+              ${isSignUp ? "Sign In" : "Sign Up"}
+            </button>
+          </div>
+
+          <div style="text-align:center; margin-top:10px;">
+            <button type="button" id="googleSignInBtn">Continue with Google</button>
+          </div>
+        </form>
+      </section>
     `;
 
     wirePasswordToggles(appEl);
@@ -406,7 +424,7 @@ export function renderAuthScreen(appEl, onLoginSuccess) {
       forgotBtn.addEventListener("click", async () => {
         const email = form.email.value.trim();
         if (!email) {
-          errorMessage = "Enter your email address above, then click Forgot password.";
+          errorMessage = "Enter your email address above, then click Forgot Password.";
           infoMessage = "";
           render();
           return;
