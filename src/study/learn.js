@@ -123,6 +123,7 @@ export function renderLearn(appEl, state, current, deps) {
     }
 
     deps.save();
+    deps.onAnswerStats?.({ correct: choice.isCorrect, current });
 
     setTimeout(() => {
       revealCorrect();

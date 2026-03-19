@@ -355,6 +355,22 @@ async function renderAll() {
         setScreen: sharedSetScreen,
         renderAll,
         feedback: sharedFeedback,
+        onAnswerStats: ({ correct, current }) => {
+          const answeredCard = sharedState.cards.find(c => c.id === current?.id);
+          if (!answeredCard) return;
+          answeredCard.attempts = (answeredCard.attempts || 0) + 1;
+          if (correct) answeredCard.correctCount = (answeredCard.correctCount || 0) + 1;
+          if (answeredCard.id && sharedState.sharedDeckId && currentUser?.id) {
+            upsertCardAttemptStat({
+              sharedDeckId:   sharedState.sharedDeckId,
+              studentId:      currentUser.id,
+              cardId:         answeredCard.id,
+              attempts:       answeredCard.attempts,
+              correctCount:   answeredCard.correctCount || 0,
+              incorrectCount: answeredCard.attempts - (answeredCard.correctCount || 0),
+            });
+          }
+        },
       });
     });
   } else if (state.screen === "study") {

@@ -282,15 +282,31 @@ function toTitleCase(str) {
   return str.replace(/\b\w/g, c => c.toUpperCase());
 }
 
+// Split a message into two balanced lines only when it is long enough to wrap.
+// Threshold: more than 45 characters. Short messages are returned unchanged.
+function balancedLines(str) {
+  const words = str.split(" ");
+  if (str.length <= 45 || words.length < 3) return str;
+  const mid = str.length / 2;
+  let best = 0, bestDist = Infinity;
+  let pos = 0;
+  for (let i = 0; i < words.length - 1; i++) {
+    pos += words[i].length + 1; // +1 for the space
+    const dist = Math.abs(pos - mid);
+    if (dist < bestDist) { bestDist = dist; best = pos - 1; } // -1: point at the space
+  }
+  return str.slice(0, best) + "<br>" + str.slice(best + 1);
+}
+
 function errorHtml(msg) {
   return msg
-    ? `<div style="margin-top:12px; text-align:center;"><span style="display:inline-block; color:#dc2626; font-size:13px; padding:6px 10px; background:#fff1f2; border:1px solid #fecdd3; border-radius:8px;">${toTitleCase(msg)}</span></div>`
+    ? `<div style="margin-top:12px; text-align:center;"><span style="display:inline-block; color:#dc2626; font-size:13px; padding:6px 10px; background:#fff1f2; border:1px solid #fecdd3; border-radius:8px;">${balancedLines(toTitleCase(msg))}</span></div>`
     : "";
 }
 
 function infoHtml(msg) {
   return msg
-    ? `<div style="color:#166534; font-size:13px; margin-top:12px; text-align:center;">${toTitleCase(msg)}</div>`
+    ? `<div style="color:#166534; font-size:13px; margin-top:12px; text-align:center;">${balancedLines(toTitleCase(msg))}</div>`
     : "";
 }
 

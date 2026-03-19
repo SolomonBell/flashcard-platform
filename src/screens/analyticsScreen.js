@@ -364,14 +364,8 @@ export function renderAnalyticsScreen(appEl, { currentUserId }) {
 
         accuracyHtml = stats.length === 0 ? "" : `
           <div style="margin-top:20px;overflow-x:auto;">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-              <h3 style="font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;
-                letter-spacing:0.05em;margin:0;">Card Accuracy</h3>
-              <button type="button" class="small" id="sortAccuracyBtn"
-                style="padding:4px 10px;font-size:12px;">
-                Sort: ${cardSortAsc ? "Hardest First" : "Easiest First"}
-              </button>
-            </div>
+            <h3 style="font-size:13px;font-weight:600;color:var(--muted);text-transform:uppercase;
+              letter-spacing:0.05em;margin:0 0 8px;">Card Accuracy</h3>
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
               <label style="font-size:12px;color:var(--muted);white-space:nowrap;">Accuracy:</label>
               <select id="accuracyScopeSelect" style="flex:1;padding:5px 8px;font-size:13px;
@@ -385,7 +379,14 @@ export function renderAnalyticsScreen(appEl, { currentUserId }) {
                   <th style="text-align:left;padding:7px 6px;font-weight:600;">Card Front</th>
                   <th style="text-align:center;padding:7px 6px;font-weight:600;">Attempts</th>
                   <th style="text-align:center;padding:7px 6px;font-weight:600;">Correct</th>
-                  <th style="text-align:center;padding:7px 6px;font-weight:600;">Accuracy %</th>
+                  <th style="text-align:center;padding:7px 6px;font-weight:600;">
+                    <select id="sortAccuracySelect"
+                      style="font-size:11px;padding:2px 4px;border:1px solid var(--border);
+                        border-radius:6px;color:var(--muted);font-weight:600;cursor:pointer;">
+                      <option value="hardest" ${!cardSortAsc ? "selected" : ""}>Accuracy ↓</option>
+                      <option value="easiest" ${cardSortAsc ? "selected" : ""}>Accuracy ↑</option>
+                    </select>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -479,7 +480,7 @@ export function renderAnalyticsScreen(appEl, { currentUserId }) {
                     <th style="text-align:left;padding:8px 6px;font-weight:600;">Student</th>
                     <th style="text-align:center;padding:8px 6px;font-weight:600;">Decks Studied</th>
                     <th style="text-align:center;padding:8px 6px;font-weight:600;">Cards Attempted</th>
-                    <th style="text-align:center;padding:8px 6px;font-weight:600;">Accuracy %</th>
+                    <th style="text-align:center;padding:8px 6px;font-weight:600;">Accuracy</th>
                     <th style="text-align:center;padding:8px 6px;font-weight:600;">Last Active</th>
                   </tr>
                 </thead>
@@ -522,8 +523,8 @@ export function renderAnalyticsScreen(appEl, { currentUserId }) {
       render();
     });
 
-    appEl.querySelector("#sortAccuracyBtn")?.addEventListener("click", () => {
-      cardSortAsc = !cardSortAsc;
+    appEl.querySelector("#sortAccuracySelect")?.addEventListener("change", (e) => {
+      cardSortAsc = e.target.value === "easiest";
       render();
     });
 

@@ -203,6 +203,7 @@ export function renderRecall(appEl, state, current, deps) {
 
         // Record answer in analytics (use grader.correct for longAnswer cards)
         recordAnswer({ isCorrect });
+        deps.onAnswerStats?.({ correct: isCorrect, current });
 
         lastResult = { isCorrect, userAnswer, correctAnswer, aiFeedback };
         step = "result";

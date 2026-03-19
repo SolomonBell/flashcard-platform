@@ -175,8 +175,8 @@ export async function renderClassesScreen(appEl, { renderAll, state }) {
                               <select class="cls-stu-sort" data-class-id="${escapeHtml(cls.id)}" style="${sortSty}">
                                 <option value="az"    ${stf.sort==="az"?"selected":""}>A → Z</option>
                                 <option value="za"    ${stf.sort==="za"?"selected":""}>Z → A</option>
-                                <option value="first" ${stf.sort==="first"?"selected":""}>Added First</option>
-                                <option value="last"  ${stf.sort==="last"?"selected":""}>Added Last</option>
+                                <option value="first" ${stf.sort==="first"?"selected":""}>Newest</option>
+                                <option value="last"  ${stf.sort==="last"?"selected":""}>Oldest</option>
                               </select>
                             </div>
                           ` : ""}
@@ -211,10 +211,10 @@ export async function renderClassesScreen(appEl, { renderAll, state }) {
                                 placeholder="Search shared decks…" value="${escapeHtml(sdf.query)}"
                                 style="${srchSty}" />
                               <select class="cls-sd-sort" data-class-id="${escapeHtml(cls.id)}" style="${sortSty}">
-                                <option value="newest" ${sdf.sort==="newest"?"selected":""}>Newest</option>
-                                <option value="oldest" ${sdf.sort==="oldest"?"selected":""}>Oldest</option>
                                 <option value="az"     ${sdf.sort==="az"?"selected":""}>A → Z</option>
                                 <option value="za"     ${sdf.sort==="za"?"selected":""}>Z → A</option>
+                                <option value="newest" ${sdf.sort==="newest"?"selected":""}>Newest</option>
+                                <option value="oldest" ${sdf.sort==="oldest"?"selected":""}>Oldest</option>
                               </select>
                             </div>
                           ` : ""}
