@@ -26,7 +26,7 @@ export function renderCardsList(state) {
       <div style="margin-top:8px;">
         <label style="display:flex; align-items:center; gap:6px; font-size:13px;">
           <input type="checkbox" data-field="longAnswer" ${c.longAnswer ? "checked" : ""} />
-          <span>Long Answer (AI graded)</span>
+          <span>Long Answer Grading</span>
         </label>
       </div>
     </div>
