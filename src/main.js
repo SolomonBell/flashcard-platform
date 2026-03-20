@@ -241,7 +241,7 @@ async function renderAll() {
 
   if (state.screen === "decks") {
     const { renderDecksScreen } = await import("./screens/decksScreen.js");
-    renderDecksScreen(appEl, { renderAll, state, currentUserId });
+    renderDecksScreen(appEl, { renderAll, save, state, currentUserId });
   } else if (state.screen === "create") {
     renderCreateScreen(appEl, state, {
       save,

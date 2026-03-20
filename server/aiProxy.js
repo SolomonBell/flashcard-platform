@@ -126,9 +126,124 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method !== "POST" || req.url !== "/grade") {
+  if (req.method !== "POST" || (req.url !== "/grade" && req.url !== "/generate-deck")) {
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Not found" }));
+    return;
+  }
+
+  if (req.url === "/generate-deck") {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "ANTHROPIC_API_KEY environment variable is not set." }));
+      return;
+    }
+
+    let input;
+    try {
+      input = await readBody(req);
+    } catch (e) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+      return;
+    }
+
+    const { text } = input;
+    if (!text?.trim()) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "text is required." }));
+      return;
+    }
+
+    const maxChars = 40000;
+    const truncatedText = text.length > maxChars ? text.slice(0, maxChars) + "\n[... content truncated ...]" : text;
+
+    const deckPrompt = `You are a flashcard generator. Read the following text and create as many high-quality flashcards as the material warrants — enough to cover all important facts, definitions, concepts, and ideas, but without padding or repetition.
+
+Rules:
+- Each "front" is a concise question or prompt (1 sentence max)
+- Each "back" is the correct answer (as short as possible while still complete)
+- Cover every significant, testable idea in the text
+- Do not repeat the same concept twice even with different wording
+- Do not include trivial, obvious, or filler cards
+- Generate more cards for dense material, fewer for sparse material — let the content guide the count
+
+Text:
+${truncatedText}
+
+Return ONLY valid JSON — an array of objects, no markdown fences, no commentary:
+[
+  { "front": "question", "back": "answer" },
+  ...
+]`;
+
+    const anthropicBody = {
+      model: MODEL,
+      max_tokens: 3000,
+      temperature: 0.3,
+      messages: [{ role: "user", content: deckPrompt }],
+    };
+
+    let anthropicResponse;
+    try {
+      anthropicResponse = await callAnthropic(apiKey, anthropicBody);
+    } catch (e) {
+      console.error("Anthropic request failed:", e.message);
+      res.writeHead(502, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Upstream request to Anthropic failed." }));
+      return;
+    }
+
+    if (anthropicResponse.status !== 200) {
+      let parsedError = null;
+      try { parsedError = JSON.parse(anthropicResponse.body); } catch (_) {}
+      console.error("[generate-deck] Anthropic error", {
+        status: anthropicResponse.status,
+        model: MODEL,
+        endpoint: ANTHROPIC_PATH,
+        errorType: parsedError?.error?.type ?? null,
+        errorMessage: parsedError?.error?.message ?? null,
+        rawBody: anthropicResponse.body,
+      });
+      res.writeHead(502, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: `Anthropic returned ${anthropicResponse.status}` }));
+      return;
+    }
+
+    let claudeText;
+    try {
+      const parsed = JSON.parse(anthropicResponse.body);
+      claudeText = parsed?.content?.[0]?.text ?? "";
+    } catch (e) {
+      console.error("[generate-deck] Failed to parse Anthropic response body:", anthropicResponse.body);
+      res.writeHead(502, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Could not parse Anthropic response." }));
+      return;
+    }
+
+    const jsonText = claudeText
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```\s*$/, "")
+      .trim();
+
+    let cards;
+    try {
+      cards = JSON.parse(jsonText);
+      if (!Array.isArray(cards)) throw new Error("Expected array");
+    } catch (e) {
+      console.error("Claude returned non-JSON for deck generation:", claudeText);
+      res.writeHead(502, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Claude did not return valid JSON." }));
+      return;
+    }
+
+    const result = cards
+      .filter(c => typeof c.front === "string" && typeof c.back === "string")
+      .map(c => ({ front: c.front.trim(), back: c.back.trim() }));
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ cards: result }));
     return;
   }
 
@@ -177,7 +292,16 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (anthropicResponse.status !== 200) {
-    console.error("Anthropic API error:", anthropicResponse.status, anthropicResponse.body);
+    let parsedError = null;
+    try { parsedError = JSON.parse(anthropicResponse.body); } catch (_) {}
+    console.error("[grade] Anthropic error", {
+      status: anthropicResponse.status,
+      model: MODEL,
+      endpoint: ANTHROPIC_PATH,
+      errorType: parsedError?.error?.type ?? null,
+      errorMessage: parsedError?.error?.message ?? null,
+      rawBody: anthropicResponse.body,
+    });
     res.writeHead(502, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: `Anthropic returned ${anthropicResponse.status}` }));
     return;

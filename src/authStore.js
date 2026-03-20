@@ -191,6 +191,23 @@ export async function signInWithGoogle() {
   }
 }
 
+export async function signInWithMicrosoft() {
+  try {
+    const sb = await getSupabaseClient();
+    const { error } = await sb.auth.signInWithOAuth({
+      provider: "azure",
+      options: {
+        redirectTo: window.location.origin + window.location.pathname,
+        scopes: "email",
+      },
+    });
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message || "Microsoft sign-in failed." };
+  }
+}
+
 /**
  * Signs out. Clears the cache synchronously first so getCurrentUser()
  * returns null immediately — the async signOut fires in the background.

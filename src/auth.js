@@ -5,6 +5,7 @@ import {
   updatePassword,
   isPendingPasswordReset,
   signInWithGoogle,
+  signInWithMicrosoft,
 } from "./authStore.js";
 
 // ── Bouncing background items ─────────────────────────────────────────────────
@@ -421,8 +422,9 @@ export function renderAuthScreen(appEl, onLoginSuccess) {
             </button>
           </div>
 
-          <div style="text-align:center; margin-top:10px;">
-            <button type="button" id="googleSignInBtn">Continue with Google</button>
+          <div style="display:flex; flex-direction:column; align-items:center; gap:8px; margin-top:10px;">
+            <button type="button" id="googleSignInBtn" style="width:230px;">Continue with Google</button>
+            <button type="button" id="microsoftSignInBtn" style="width:230px;">Continue with Microsoft</button>
           </div>
         </form>
       </section>
@@ -542,6 +544,15 @@ export function renderAuthScreen(appEl, onLoginSuccess) {
         render();
       }
       // On success the browser navigates to Google — nothing else to do here.
+    });
+
+    appEl.querySelector("#microsoftSignInBtn").addEventListener("click", async () => {
+      const result = await signInWithMicrosoft();
+      if (!result.success) {
+        errorMessage = result.error || "Microsoft sign-in failed.";
+        render();
+      }
+      // On success the browser navigates to Microsoft — nothing else to do here.
     });
   }
 
