@@ -288,13 +288,20 @@ function renderStackedActivityChart(stack) {
     text-anchor="middle" font-size="9" fill="var(--muted,#6b7280)"
     transform="rotate(-90, 10, ${padT + chartH / 2})">Answers</text>`;
 
+  const startOpen = displayStudents.length <= 5;
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;"
     role="img" aria-label="14-day stacked student activity chart: answers submitted per student per day">
     ${yAxisLabel}${yLabels}${bars}${xLabels}${xAxisLabel}
   </svg>
-  <div style="display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:8px;">
-    ${legend}
-  </div>`;
+  <details style="margin-top:8px;" ${startOpen ? "open" : ""}>
+    <summary style="font-size:11px;color:var(--muted);cursor:pointer;user-select:none;
+      list-style:none;display:inline-flex;align-items:center;gap:4px;">
+      Student Legend ▼
+    </summary>
+    <div style="display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:6px;">
+      ${legend}
+    </div>
+  </details>`;
 }
 
 // ── Screen ────────────────────────────────────────────────────────────────
