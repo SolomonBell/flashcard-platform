@@ -39,7 +39,7 @@ export function renderDecksScreen(appEl, { renderAll, save, state, currentUserId
                 display:block; width:100%; text-align:left;
                 padding:11px 16px; border:none; background:none;
                 cursor:pointer; font-size:0.92rem; font-family:inherit;
-              ">Generation</button>
+              ">Generate</button>
             </div>
           </div>
         </div>
@@ -178,7 +178,7 @@ export function renderDecksScreen(appEl, { renderAll, save, state, currentUserId
         return;
       }
 
-      showStatus("Generating flashcards with AI… this may take a moment.");
+      showStatus("Generating flashcards with AI. Please be patient.");
 
       let rawCards;
       try {
@@ -218,7 +218,7 @@ export function renderDecksScreen(appEl, { renderAll, save, state, currentUserId
           <strong>${validRaw.length} cards</strong> generated from <em>${escapeHtml(file.name)}</em>.
         </p>
         <p style="margin:0 0 14px; font-size:0.85rem; color:var(--muted);">
-          AI-generated cards are a starting point — you can edit, add, or delete them in the editor before studying.
+          AI-generation complete. Please review before starting to study. 
         </p>
         <div style="display:flex; gap:8px;">
           <button type="button" class="primary" id="openEditorBtn">Open in Editor</button>
