@@ -263,7 +263,6 @@ async function renderAll() {
     await renderClassesScreen(appEl, { setScreen, renderAll, startAssignedDeckStudy, state });
   } else if (state.screen === "sharedStudy") {
     import("./data/store/index.js").then(async ({ getSharedDeckById, getSharedDeckProgress, saveSharedDeckProgress, upsertCardAttemptStat }) => {
-      console.log("[DBG import] typeof upsertCardAttemptStat:", typeof upsertCardAttemptStat);
       const sharedDeck = await getSharedDeckById(state.sharedDeckId);
       if (!sharedDeck) {
         state.sharedDeckId = null;
@@ -307,20 +306,12 @@ async function renderAll() {
       };
 
       const sharedFeedback = (payload) => {
-        console.log("[DBG sharedFeedback] payload.current:", payload.current, "sharedDeckId:", sharedState.sharedDeckId, "userId:", currentUser?.id);
         // Per-card cumulative tracking stored directly on the card object
         const answeredCard = sharedState.cards.find(c => c.id === payload.current?.id);
-        console.log("[DBG sharedFeedback] answeredCard found:", answeredCard ? `id=${answeredCard.id}` : "NONE — guard will block upsert");
         if (answeredCard) {
           answeredCard.attempts = (answeredCard.attempts || 0) + 1;
           if (payload.correct) answeredCard.correctCount = (answeredCard.correctCount || 0) + 1;
           // Write absolute totals to the dedicated per-card stats table (fire-and-forget)
-          console.log("[DBG guard]", {
-            cardId: answeredCard.id,
-            sharedDeckId: sharedState.sharedDeckId,
-            userId: currentUser?.id,
-            upsertType: typeof upsertCardAttemptStat,
-          });
           if (answeredCard.id && sharedState.sharedDeckId && currentUser?.id) {
             upsertCardAttemptStat({
               sharedDeckId:  sharedState.sharedDeckId,
@@ -330,8 +321,6 @@ async function renderAll() {
               correctCount:  answeredCard.correctCount || 0,
               incorrectCount: answeredCard.attempts - (answeredCard.correctCount || 0),
             });
-          } else {
-            console.warn("[DBG guard] UPSERT BLOCKED — falsy value above");
           }
         }
         recordAnswer({ isCorrect: payload.correct, card: payload.current });

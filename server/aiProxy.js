@@ -23,10 +23,22 @@ const MODEL = "claude-3-haiku-20240307";
 
 // ── CORS helper ─────────────────────────────────────────────────────────────
 
-function setCorsHeaders(res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+// Update ALLOWED_ORIGINS before deploying to production.
+// Add your production domain (e.g. "https://firststepstudy.com") to the list.
+const ALLOWED_ORIGINS = [
+  "http://localhost:8080",
+  "http://127.0.0.1:8080",
+  // "https://firststepstudy.com",  ← uncomment and set your production domain here
+];
+
+function setCorsHeaders(req, res) {
+  const origin = req.headers.origin;
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Vary", "Origin");
 }
 
 // ── Anthropic forwarding ─────────────────────────────────────────────────────
@@ -117,7 +129,7 @@ function readBody(req) {
 }
 
 const server = http.createServer(async (req, res) => {
-  setCorsHeaders(res);
+  setCorsHeaders(req, res);
 
   // Handle CORS preflight
   if (req.method === "OPTIONS") {

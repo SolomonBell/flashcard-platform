@@ -890,7 +890,6 @@ export const supabaseStore = {
    * @returns {Promise<void>}
    */
   upsertCardAttemptStat: async ({ sharedDeckId, studentId, cardId, attempts, correctCount, incorrectCount }) => {
-    console.log("[DBG card_attempt_stats WRITE]", { sharedDeckId, studentId, cardId, attempts, correctCount, incorrectCount });
     try {
       const sb = await getSupabaseClient();
       const now = new Date().toISOString();
@@ -909,9 +908,8 @@ export const supabaseStore = {
           },
           { onConflict: "shared_deck_id,student_id,card_id" }
         );
-      if (error) console.warn("[DBG card_attempt_stats WRITE] FAILED:", error.code, error.message, error.details);
-      else console.log("[DBG card_attempt_stats WRITE] OK");
-    } catch (e) { console.warn("[DBG card_attempt_stats WRITE] EXCEPTION:", e); }
+      if (error) console.error("card_attempt_stats upsert failed:", error.message);
+    } catch (e) { console.error("card_attempt_stats upsert exception:", e); }
   },
 
   /**
@@ -922,7 +920,6 @@ export const supabaseStore = {
    * @returns {Promise<Array>}
    */
   getCardAttemptStatsForDeck: async ({ sharedDeckId, studentIds = null }) => {
-    console.log("[DBG card_attempt_stats READ]", { sharedDeckId, studentIds });
     try {
       const sb = await getSupabaseClient();
       let query = sb
@@ -933,7 +930,6 @@ export const supabaseStore = {
         query = query.in("student_id", studentIds);
       }
       const { data, error } = await query;
-      console.log("[DBG card_attempt_stats READ] result:", error ? `ERROR ${error.code}: ${error.message}` : `${data?.length ?? 0} rows`);
       if (error) return [];
       return (data || []).map(r => ({
         cardId:        r.card_id,

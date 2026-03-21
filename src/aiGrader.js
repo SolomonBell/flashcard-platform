@@ -1,4 +1,5 @@
-const PROXY_URL = "http://localhost:3001/grade";
+import { config } from "./config.js";
+const PROXY_URL = `${config?.aiProxyUrl || "http://localhost:3001"}/grade`;
 
 const ERROR_RESULT = {
   correct: false,
