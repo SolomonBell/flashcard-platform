@@ -28,7 +28,8 @@ const MODEL = "claude-3-haiku-20240307";
 const ALLOWED_ORIGINS = [
   "http://localhost:8080",
   "http://127.0.0.1:8080",
-  // "https://firststepstudy.com",  ← uncomment and set your production domain here
+  "https://flashcard-platform-azure.vercel.app",
+  "https://firststepstudy.com",
 ];
 
 function setCorsHeaders(req, res) {
