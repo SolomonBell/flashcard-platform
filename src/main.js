@@ -1,3 +1,4 @@
+import { requireBetaAccess } from "./betaGate.js";
 import { loadStateForUser, saveStateForUser, newStateForUser, resetAllForUser } from "./state.js";
 import { renderProgressBar } from "./progress.js";
 import { renderCreateScreen } from "./create/create.js";
@@ -383,6 +384,7 @@ async function renderAll() {
 
 // Initialize on load
 (async () => {
+  await requireBetaAccess();
   await initAuth();
   await loadUserState();
   await renderAll();
