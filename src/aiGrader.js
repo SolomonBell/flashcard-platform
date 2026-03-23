@@ -1,5 +1,6 @@
 import { config } from "./config.js";
-const PROXY_URL = `${config?.aiProxyUrl || "http://localhost:3001"}/grade`;
+const PROXY_URL     = `${config?.aiProxyUrl    || "http://localhost:3001"}/grade`;
+const PROXY_SECRET  =  config?.proxySecret     || "";
 
 const ERROR_RESULT = {
   correct: false,
@@ -24,7 +25,10 @@ export async function gradeLongAnswer({ promptFront, expectedAnswer, userAnswer 
   try {
     const response = await fetch(PROXY_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(PROXY_SECRET ? { "X-Proxy-Secret": PROXY_SECRET } : {}),
+      },
       body: JSON.stringify({ promptFront, expectedAnswer, userAnswer }),
     });
 

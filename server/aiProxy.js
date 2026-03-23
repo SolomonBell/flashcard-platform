@@ -37,9 +37,43 @@ function setCorsHeaders(req, res) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   }
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-Proxy-Secret");
   res.setHeader("Vary", "Origin");
 }
+
+// ── Proxy secret ─────────────────────────────────────────────────────────────
+
+// Set PROXY_SECRET env var when running the server and add the same value
+// to src/config.js as proxySecret so the frontend includes it on every request.
+// This stops casual abuse from tools like curl; it is not a substitute for RLS.
+const PROXY_SECRET = process.env.PROXY_SECRET || "";
+
+// ── Rate limiter (per-IP, in-memory, 10 req / 60 s) ──────────────────────────
+
+const MAX_BODY_BYTES   = 2 * 1024 * 1024;  // 2 MB
+const RATE_LIMIT_MAX   = 10;
+const RATE_LIMIT_WINDOW = 60_000;           // ms
+
+const _rateLimiter = new Map();
+
+function checkRateLimit(ip) {
+  const now  = Date.now();
+  let   entry = _rateLimiter.get(ip);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + RATE_LIMIT_WINDOW };
+  }
+  entry.count++;
+  _rateLimiter.set(ip, entry);
+  return entry.count <= RATE_LIMIT_MAX;
+}
+
+// Purge expired entries every 5 minutes to prevent unbounded memory growth.
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of _rateLimiter) {
+    if (now > entry.resetAt) _rateLimiter.delete(ip);
+  }
+}, 5 * 60_000).unref();
 
 // ── Anthropic forwarding ─────────────────────────────────────────────────────
 
@@ -118,8 +152,16 @@ function callAnthropic(apiKey, body) {
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
-    let data = "";
-    req.on("data", (chunk) => { data += chunk; });
+    let data  = "";
+    let bytes = 0;
+    req.on("data", (chunk) => {
+      bytes += chunk.length;
+      if (bytes > MAX_BODY_BYTES) {
+        req.destroy();
+        return reject(new Error("Request body too large (2 MB max)"));
+      }
+      data += chunk;
+    });
     req.on("end", () => {
       try { resolve(JSON.parse(data)); }
       catch (e) { reject(new Error("Invalid JSON in request body")); }
@@ -141,6 +183,21 @@ const server = http.createServer(async (req, res) => {
   if (req.method !== "POST" || (req.url !== "/grade" && req.url !== "/generate-deck")) {
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Not found" }));
+    return;
+  }
+
+  // ── Rate limit ──────────────────────────────────────────────────────────────
+  const ip = req.socket.remoteAddress || "unknown";
+  if (!checkRateLimit(ip)) {
+    res.writeHead(429, { "Content-Type": "application/json", "Retry-After": "60" });
+    res.end(JSON.stringify({ error: "Too many requests. Please wait a minute." }));
+    return;
+  }
+
+  // ── Proxy secret ────────────────────────────────────────────────────────────
+  if (PROXY_SECRET && req.headers["x-proxy-secret"] !== PROXY_SECRET) {
+    res.writeHead(401, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Unauthorized" }));
     return;
   }
 

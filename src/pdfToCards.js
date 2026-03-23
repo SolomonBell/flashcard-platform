@@ -31,10 +31,14 @@ export async function extractTextFromPdf(file) {
 }
 
 export async function generateCardsFromText(text) {
-  const proxyUrl = config?.aiProxyUrl || "http://localhost:3001";
+  const proxyUrl     = config?.aiProxyUrl  || "http://localhost:3001";
+  const proxySecret  = config?.proxySecret || "";
   const res = await fetch(`${proxyUrl}/generate-deck`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(proxySecret ? { "X-Proxy-Secret": proxySecret } : {}),
+    },
     body: JSON.stringify({ text }),
   });
   if (!res.ok) {

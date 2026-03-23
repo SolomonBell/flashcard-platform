@@ -7,6 +7,7 @@ import {
   signInWithGoogle,
   signInWithMicrosoft,
 } from "./authStore.js";
+import { escapeHtml } from "./utils.js";
 
 // ── Bouncing background items ─────────────────────────────────────────────────
 
@@ -301,13 +302,13 @@ function balancedLines(str) {
 
 function errorHtml(msg) {
   return msg
-    ? `<div style="margin-top:12px; text-align:center;"><span style="display:inline-block; color:#dc2626; font-size:13px; padding:6px 10px; background:#fff1f2; border:1px solid #fecdd3; border-radius:8px;">${balancedLines(toTitleCase(msg))}</span></div>`
+    ? `<div style="margin-top:12px; text-align:center;"><span style="display:inline-block; color:#dc2626; font-size:13px; padding:6px 10px; background:#fff1f2; border:1px solid #fecdd3; border-radius:8px;">${balancedLines(toTitleCase(escapeHtml(msg)))}</span></div>`
     : "";
 }
 
 function infoHtml(msg) {
   return msg
-    ? `<div style="color:#166534; font-size:13px; margin-top:12px; text-align:center;">${balancedLines(toTitleCase(msg))}</div>`
+    ? `<div style="color:#166534; font-size:13px; margin-top:12px; text-align:center;">${balancedLines(toTitleCase(escapeHtml(msg)))}</div>`
     : "";
 }
 
