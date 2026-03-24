@@ -57,17 +57,11 @@ async function _fetchProfile(sb, userId) {
 }
 
 /**
- * Ensures a user_profiles row exists (inserts with default "student" role if
- * the row is missing, does nothing if it already exists), then fetches it.
- * Used in onAuthStateChange so OAuth sign-ins always have a profile row.
+ * Fetches the user_profiles row for the given auth user.
+ * Profile creation is handled automatically by the `on_auth_user_created`
+ * database trigger — no frontend insert is needed or safe here.
  */
 async function _ensureAndFetchProfile(sb, authUser) {
-  await sb
-    .from("user_profiles")
-    .upsert(
-      { id: authUser.id, email: authUser.email, role: "student" },
-      { ignoreDuplicates: true }
-    );
   return _fetchProfile(sb, authUser.id);
 }
 
@@ -81,21 +75,22 @@ async function _ensureAndFetchProfile(sb, authUser) {
 export async function createUser(email, password, role) {
   try {
     const sb = await getSupabaseClient();
-    const { data, error } = await sb.auth.signUp({ email, password });
+
+    // Pass role in user metadata so the `on_auth_user_created` database
+    // trigger can write it to user_profiles automatically and safely.
+    const { data, error } = await sb.auth.signUp({
+      email,
+      password,
+      options: { data: { role } },
+    });
 
     if (error) return { success: false, error: error.message };
 
     const authUser = data.user;
     if (!authUser) return { success: false, error: "Sign-up failed." };
 
-    // Upsert profile with role (works whether session exists or not)
-    const { error: profileErr } = await sb
-      .from("user_profiles")
-      .upsert({ id: authUser.id, email: authUser.email, role }, { onConflict: "id" });
-
-    if (profileErr) return { success: false, error: profileErr.message };
-
-    // If Supabase email confirmation is ON, session is null until confirmed
+    // If Supabase email confirmation is ON, session is null until confirmed.
+    // The trigger already created the profile row — nothing else to do here.
     if (!data.session) {
       return { success: true, needsEmailConfirmation: true };
     }

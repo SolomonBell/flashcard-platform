@@ -30,6 +30,7 @@ const ALLOWED_ORIGINS = [
   "http://127.0.0.1:8080",
   "https://flashcard-platform-azure.vercel.app",
   "https://firststepstudy.com",
+  "https://www.firststepstudy.com",
 ];
 
 function setCorsHeaders(req, res) {
