@@ -16,7 +16,7 @@
 const http  = require("http");
 const https = require("https");
 
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;  // process.env.PORT is required for Railway
 const ANTHROPIC_HOST = "api.anthropic.com";
 const ANTHROPIC_PATH = "/v1/messages";
 const MODEL = "claude-3-haiku-20240307";
