@@ -172,8 +172,25 @@ function readBody(req) {
   });
 }
 
+// ── Process-level safety net ─────────────────────────────────────────────────
+// Prevents the process from dying silently on any unhandled async error.
+
+process.on("uncaughtException",  (err) => console.error("[uncaughtException]",  err));
+process.on("unhandledRejection", (err) => console.error("[unhandledRejection]", err));
+
 const server = http.createServer(async (req, res) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+
+  try {
+
   setCorsHeaders(req, res);
+
+  // Health check — Railway and uptime monitors use this.
+  if (req.url === "/health") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: "ok" }));
+    return;
+  }
 
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -413,6 +430,14 @@ Return ONLY valid JSON — an array of objects, no markdown fences, no commentar
     incorrectClaims: Array.isArray(gradeResult.incorrectClaims) ? gradeResult.incorrectClaims : [],
     feedback:        typeof gradeResult.feedback === "string"   ? gradeResult.feedback        : "",
   }));
+
+  } catch (err) {
+    console.error("[handler crash]", err);
+    if (!res.headersSent) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Internal server error" }));
+    }
+  }
 });
 
 server.listen(PORT, "0.0.0.0", () => {
