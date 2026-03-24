@@ -415,7 +415,7 @@ Return ONLY valid JSON — an array of objects, no markdown fences, no commentar
   }));
 });
 
-server.listen(PORT, () => {
-  console.log(`AI grading proxy listening on http://localhost:${PORT}`);
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`AI grading proxy listening on 0.0.0.0:${PORT}`);
   console.log(`POST http://localhost:${PORT}/grade`);
 });
