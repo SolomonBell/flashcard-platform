@@ -255,13 +255,10 @@ async function renderAll() {
     renderAnalyticsScreen(appEl, { currentUserId });
   } else if (state.screen === "classes") {
     const { renderClassesScreen } = await import("./screens/classesScreen.js");
-    const startAssignedDeckStudy = ({ deckId, cards }) => {
-      state.cards = cards;
-      state.deckId = deckId;
-      state.screen = "study";
-      renderAll();
-    };
-    await renderClassesScreen(appEl, { setScreen, renderAll, startAssignedDeckStudy, state });
+    await renderClassesScreen(appEl, { renderAll, state });
+  } else if (state.screen === "classDetail") {
+    const { renderClassDetailScreen } = await import("./screens/classDetailScreen.js");
+    await renderClassDetailScreen(appEl, { renderAll, state });
   } else if (state.screen === "sharedStudy") {
     import("./data/store/index.js").then(async ({ getSharedDeckById, getSharedDeckProgress, saveSharedDeckProgress, upsertCardAttemptStat }) => {
       const sharedDeck = await getSharedDeckById(state.sharedDeckId);
