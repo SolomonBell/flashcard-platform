@@ -50,15 +50,15 @@ export function renderFeedback(appEl, state, { correct, current, userAnswer }, d
 
       <div class="btns" style="margin-top:18px;">
         <button class="primary" id="nextBtn">Next</button>
-        <button class="danger" id="backToCreate2">Back to Create</button>
+        <button class="danger" id="backToDecks">Back to Decks</button>
       </div>
     </section>
   `;
 
   appEl.querySelector("#nextBtn").addEventListener("click", () => deps.next());
-  appEl.querySelector("#backToCreate2").addEventListener("click", () => {
+  appEl.querySelector("#backToDecks").addEventListener("click", () => {
     resetStudyProgress();
-    deps.setScreen("create");
+    deps.setScreen("decks");
     deps.save();
     deps.renderAll();
   });

@@ -143,7 +143,7 @@ export function renderRecall(appEl, state, current, deps) {
               ? `<button class="primary" id="submitRecall">Submit</button>`
               : `<button class="primary" id="nextBtn">Next</button>`
           }
-          <button class="danger" id="backToCreate">Back to Create</button>
+          <button class="danger" id="backToDecks">Back to Decks</button>
         </div>
       </section>
     `;
@@ -154,9 +154,9 @@ export function renderRecall(appEl, state, current, deps) {
       inputEl.value = lastResult.userAnswer;
     }
 
-    appEl.querySelector("#backToCreate").addEventListener("click", () => {
+    appEl.querySelector("#backToDecks").addEventListener("click", () => {
       resetStudyProgress();
-      deps.setScreen("create");
+      deps.setScreen("decks");
       deps.save();
       deps.renderAll();
     });

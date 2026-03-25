@@ -39,7 +39,7 @@ export function renderLearn(appEl, state, current, deps) {
       </div>
 
       <div class="btns" style="margin-top:16px; justify-content:space-between;">
-        <button class="danger" id="backToCreate">Back to Create</button>
+        <button class="danger" id="backToDecks">Back to Decks</button>
         <button class="primary" id="nextBtn" disabled>Next</button>
       </div>
     </section>
@@ -75,10 +75,10 @@ export function renderLearn(appEl, state, current, deps) {
   }
 
   // --- Navigation
-  appEl.querySelector("#backToCreate").addEventListener("click", () => {
+  appEl.querySelector("#backToDecks").addEventListener("click", () => {
     cleanupKeyHandler();
     resetStudyProgress();
-    deps.setScreen("create");
+    deps.setScreen("decks");
     deps.save();
     deps.renderAll();
   });

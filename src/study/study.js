@@ -104,13 +104,13 @@ export function renderStudyScreen(appEl, state, deps) {
         ${deps.renderProgressBar(state)}
         <h2>No cards available</h2>
         <div class="btns">
-          <button class="danger" id="backToCreate">Back to Create</button>
+          <button class="danger" id="backToDecks">Back to Decks</button>
         </div>
       </section>
     `;
 
-    appEl.querySelector("#backToCreate").addEventListener("click", () => {
-      deps.setScreen("create");
+    appEl.querySelector("#backToDecks").addEventListener("click", () => {
+      deps.setScreen("decks");
       deps.save();
       deps.renderAll();
     });
