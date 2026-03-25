@@ -48,7 +48,7 @@ export function renderFeedback(appEl, state, { correct, current, userAnswer }, d
         <pre style="margin:0; white-space:pre-wrap; font-family:inherit;">${safeCorrect}</pre>
       </div>
 
-      <div class="btns" style="margin-top:18px;">
+      <div class="btns" style="margin-top:18px; justify-content:space-between;">
         <button class="primary" id="nextBtn">Next</button>
         <button class="danger" id="backToDecks">Back to Decks</button>
       </div>

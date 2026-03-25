@@ -39,8 +39,8 @@ export function renderLearn(appEl, state, current, deps) {
       </div>
 
       <div class="btns" style="margin-top:16px; justify-content:space-between;">
-        <button class="danger" id="backToDecks">Back to Decks</button>
         <button class="primary" id="nextBtn" disabled>Next</button>
+        <button class="danger" id="backToDecks">Back to Decks</button>
       </div>
     </section>
   `;

@@ -137,7 +137,7 @@ export function renderRecall(appEl, state, current, deps) {
         : ""
     }
 
-        <div class="btns" style="margin-top:16px;">
+        <div class="btns" style="margin-top:16px; justify-content:space-between;">
           ${
             step === "answer"
               ? `<button class="primary" id="submitRecall">Submit</button>`
