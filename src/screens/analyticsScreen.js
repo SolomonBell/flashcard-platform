@@ -333,6 +333,44 @@ export function renderAnalyticsScreen(appEl, { currentUserId }) {
     const progressRows = cls?._progressRows ?? [];
     const sessionRows  = cls?._sessionRows  ?? [];
 
+    // Filter to the selected deck (mirrors how Card Accuracy uses selectedDeckId)
+    const deckProgressRows = selectedDeckId
+      ? progressRows.filter(p => p.sharedDeckId === selectedDeckId)
+      : progressRows;
+    const deckSessionRows = selectedDeckId
+      ? sessionRows.filter(s => s.sharedDeckId === selectedDeckId)
+      : sessionRows;
+
+    // Build email→UUIDs from all progress rows (UUID is invariant across decks)
+    const emailToUuids = {};
+    for (const p of progressRows) {
+      if (!emailToUuids[p.studentEmail]) emailToUuids[p.studentEmail] = [];
+      if (!emailToUuids[p.studentEmail].includes(p.studentId))
+        emailToUuids[p.studentEmail].push(p.studentId);
+    }
+
+    // Per-student stats scoped to the selected deck
+    const deckStudentStats = {};
+    for (const email of (cls?.students ?? [])) {
+      const myProgress = deckProgressRows.filter(p => p.studentEmail === email);
+      const myUuids    = emailToUuids[email] ?? [];
+      const mySessions = deckSessionRows.filter(s => myUuids.includes(s.studentId));
+
+      const lastStudiedAt = myProgress.reduce(
+        (max, p) => (!max || (p.lastStudiedAt && p.lastStudiedAt > max)) ? p.lastStudiedAt : max,
+        null
+      );
+      const totalAnswers = mySessions.reduce((sum, s) => sum + s.answersSubmitted, 0);
+      const totalCorrect = mySessions.reduce((sum, s) => sum + s.correctCount, 0);
+
+      deckStudentStats[email] = {
+        decksStudied:   myProgress.length,
+        cardsAttempted: totalAnswers > 0 ? totalAnswers : null,
+        accuracy:       totalAnswers > 0 ? Math.round((totalCorrect / totalAnswers) * 100) : null,
+        lastStudiedAt,
+      };
+    }
+
     // Build per-deck panels
     let chartHtml = "";
     let accuracyHtml = "";
@@ -340,8 +378,8 @@ export function renderAnalyticsScreen(appEl, { currentUserId }) {
     if (cls) {
       const stack = buildActivityStack({
         studentIds:  cls.students,
-        sessionRows,
-        progressRows,
+        sessionRows: deckSessionRows,
+        progressRows: deckProgressRows,
         days: 14,
       });
       chartHtml = `
@@ -491,7 +529,7 @@ export function renderAnalyticsScreen(appEl, { currentUserId }) {
                     ? `<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--muted);">
                         No students in this class yet.</td></tr>`
                     : cls.students.map(sid => {
-                        const st = cls.studentStats?.[sid] ?? {};
+                        const st = deckStudentStats[sid] ?? {};
                         const decksStudied   = st.decksStudied   != null ? String(st.decksStudied)   : "—";
                         const cardsAttempted = st.cardsAttempted != null ? String(st.cardsAttempted) : "—";
                         const accuracy       = st.accuracy       != null ? st.accuracy + "%"         : "—";
