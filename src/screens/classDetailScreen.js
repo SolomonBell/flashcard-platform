@@ -127,10 +127,7 @@ export async function renderClassDetailScreen(appEl, { renderAll, state }) {
 
     appEl.innerHTML = `
       <section class="card" style="max-width:600px; margin:0 auto;">
-        <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
-          <button type="button" class="small" id="backBtn" style="padding:4px 10px; font-size:12px;">← Classes</button>
-          <h2 style="margin:0; flex:1; text-align:center;">${escapeHtml(cls.name)}</h2>
-        </div>
+        <h2 style="margin:0 0 16px; text-align:center;">${escapeHtml(cls.name)}</h2>
         ${message ? `<div class="auth-status auth-status-${messageType}" style="margin-bottom:12px;">${escapeHtml(message)}</div>` : ""}
 
         <!-- Students section -->
@@ -224,12 +221,6 @@ export async function renderClassDetailScreen(appEl, { renderAll, state }) {
         el.style.display = el.dataset.name.toLowerCase().includes(sdQ) ? "" : "none";
       });
     }
-
-    // ── Back button ──────────────────────────────────────────────────────────
-    appEl.querySelector("#backBtn")?.addEventListener("click", () => {
-      state.screen = "classes";
-      renderAll();
-    });
 
     // ── Custom deck picker ───────────────────────────────────────────────────
     appEl.querySelector("#cls-deck-trigger")?.addEventListener("click", () => {
