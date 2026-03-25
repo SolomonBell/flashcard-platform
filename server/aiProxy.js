@@ -23,19 +23,11 @@ const MODEL = "claude-3-haiku-20240307";
 
 // ── CORS helper ─────────────────────────────────────────────────────────────
 
-// Update ALLOWED_ORIGINS before deploying to production.
-// Add your production domain (e.g. "https://firststepstudy.com") to the list.
-const ALLOWED_ORIGINS = [
-  "http://localhost:8080",
-  "http://127.0.0.1:8080",
-  "https://flashcard-platform-azure.vercel.app",
-  "https://firststepstudy.com",
-  "https://www.firststepstudy.com",
-];
-
+// Allow any browser origin. The X-Proxy-Secret header is the real security gate;
+// restricting by Origin adds negligible protection and breaks LAN / non-localhost access.
 function setCorsHeaders(req, res) {
   const origin = req.headers.origin;
-  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+  if (origin) {
     res.setHeader("Access-Control-Allow-Origin", origin);
   }
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
