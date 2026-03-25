@@ -183,16 +183,17 @@ process.on("unhandledRejection", (err) => console.error("[unhandledRejection]", 
 const server = http.createServer(async (req, res) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
 
-  try {
-
-  setCorsHeaders(req, res);
-
-  // Health check — Railway and uptime monitors use this.
-  if (req.url === "/health") {
+  // Health check — must respond before any other logic so Railway does not
+  // consider the service unhealthy and restart the container.
+  if (req.url === "/health" || req.url === "/") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ status: "ok" }));
     return;
   }
+
+  try {
+
+  setCorsHeaders(req, res);
 
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -440,6 +441,11 @@ Return ONLY valid JSON — an array of objects, no markdown fences, no commentar
       res.end(JSON.stringify({ error: "Internal server error" }));
     }
   }
+});
+
+server.on("error", (err) => {
+  console.error("[server error]", err);
+  process.exit(1);  // Force Railway to show the real error and restart cleanly
 });
 
 server.listen(PORT, "0.0.0.0", () => {
