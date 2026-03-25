@@ -4,6 +4,9 @@ import {
 import { escapeHtml, uid } from "../utils.js";
 
 export function renderDecksScreen(appEl, { renderAll, save, state, currentUserId }) {
+  let editingDeckId = null;
+  let editingTitle = "";
+
   async function render() {
     const decks = await listDecks(currentUserId);
 
@@ -60,30 +63,50 @@ export function renderDecksScreen(appEl, { renderAll, save, state, currentUserId
             ? `<p class="small" style="color:var(--muted); text-align:center; margin-top:8px;">
                 No decks yet. Create one above.
                </p>`
-            : decks.map(deck => `
-              <div style="display:grid; grid-template-columns:1fr auto; align-items:center; gap:8px;
-                          padding:10px 12px; border:1px solid var(--border, #e5e7eb);
-                          border-radius:10px; margin-bottom:8px;">
-                <span style="font-weight:600; word-break:break-word;">
-                  ${escapeHtml(deck.title)}
-                </span>
-                <div style="display:flex; gap:6px;">
-                  <button type="button" class="primary small" style="padding:3px 8px; font-size:0.8rem;"
-                    data-open-deck="${escapeHtml(deck.id)}">Open</button>
-                  <button type="button" class="small" style="padding:3px 8px; font-size:0.8rem;"
-                    data-rename-deck="${escapeHtml(deck.id)}"
-                    data-deck-title="${escapeHtml(deck.title)}">Rename</button>
-                  <button type="button" class="small" style="padding:3px 8px; font-size:0.8rem;"
-                    data-duplicate-deck="${escapeHtml(deck.id)}">Duplicate</button>
-                  <button type="button" class="danger small" style="padding:3px 8px; font-size:0.8rem;"
-                    data-delete-deck="${escapeHtml(deck.id)}"
-                    data-deck-title="${escapeHtml(deck.title)}">Delete</button>
-                </div>
-              </div>
-            `).join("")}
+            : decks.map(deck => {
+                const isEditing = deck.id === editingDeckId;
+                return `
+                  <div style="display:grid; grid-template-columns:1fr auto; align-items:center; gap:8px;
+                              padding:10px 12px; border:1px solid var(--border, #e5e7eb);
+                              border-radius:10px; margin-bottom:8px;">
+                    ${isEditing
+                      ? `<input type="text" class="rename-input" data-deck-id="${escapeHtml(deck.id)}"
+                           value="${escapeHtml(editingTitle)}" style="font-weight:600; padding:2px 6px;" />`
+                      : `<span style="font-weight:600; word-break:break-word;">${escapeHtml(deck.title)}</span>`
+                    }
+                    <div style="display:flex; gap:6px;">
+                      ${isEditing
+                        ? `<button type="button" class="primary small" style="padding:3px 8px; font-size:0.8rem;"
+                               data-save-rename="${escapeHtml(deck.id)}">Save</button>
+                           <button type="button" class="small" style="padding:3px 8px; font-size:0.8rem;"
+                               data-cancel-rename="${escapeHtml(deck.id)}">Cancel</button>`
+                        : `<button type="button" class="primary small" style="padding:3px 8px; font-size:0.8rem;"
+                               data-open-deck="${escapeHtml(deck.id)}">Open</button>
+                           <button type="button" class="small" style="padding:3px 8px; font-size:0.8rem;"
+                               data-rename-deck="${escapeHtml(deck.id)}"
+                               data-deck-title="${escapeHtml(deck.title)}">Rename</button>
+                           <button type="button" class="small" style="padding:3px 8px; font-size:0.8rem;"
+                               data-duplicate-deck="${escapeHtml(deck.id)}">Duplicate</button>
+                           <button type="button" class="danger small" style="padding:3px 8px; font-size:0.8rem;"
+                               data-delete-deck="${escapeHtml(deck.id)}"
+                               data-deck-title="${escapeHtml(deck.title)}">Delete</button>`
+                      }
+                    </div>
+                  </div>
+                `;
+              }).join("")}
         </div>
       </section>
     `;
+
+    // Focus and select-all the rename input when entering edit mode
+    if (editingDeckId) {
+      const renameInput = appEl.querySelector(`.rename-input[data-deck-id="${editingDeckId}"]`);
+      if (renameInput) {
+        renameInput.focus();
+        renameInput.select();
+      }
+    }
 
     // ── Dropdown toggle ─────────────────────────────────────────────────────
 
@@ -110,6 +133,7 @@ export function renderDecksScreen(appEl, { renderAll, save, state, currentUserId
       const title = input?.value?.trim() || "New Deck";
       const newId = await createDeck(currentUserId, title);
       if (input) input.value = "";
+      editingDeckId = null;
       await openDeck(newId);
     });
 
@@ -265,15 +289,36 @@ export function renderDecksScreen(appEl, { renderAll, save, state, currentUserId
       const openId = e.target?.getAttribute("data-open-deck");
       if (openId) { await openDeck(openId); return; }
 
+      // Rename — enter edit mode
       const renameId = e.target?.getAttribute("data-rename-deck");
       if (renameId) {
-        const current = e.target?.getAttribute("data-deck-title") || "";
-        const newTitle = prompt("New deck name:", current);
-        if (newTitle?.trim()) {
-          await renameDeck(currentUserId, renameId, newTitle.trim());
-          if (renameId === state.deckId) state.deckTitle = newTitle.trim();
-          await render();
+        editingDeckId = renameId;
+        editingTitle = e.target?.getAttribute("data-deck-title") || "";
+        await render();
+        return;
+      }
+
+      // Save rename
+      const saveId = e.target?.getAttribute("data-save-rename");
+      if (saveId) {
+        const input = appEl.querySelector(`.rename-input[data-deck-id="${saveId}"]`);
+        const newTitle = input?.value?.trim();
+        if (newTitle && newTitle !== editingTitle) {
+          await renameDeck(currentUserId, saveId, newTitle);
+          if (saveId === state.deckId) state.deckTitle = newTitle;
         }
+        editingDeckId = null;
+        editingTitle = "";
+        await render();
+        return;
+      }
+
+      // Cancel rename
+      const cancelId = e.target?.getAttribute("data-cancel-rename");
+      if (cancelId) {
+        editingDeckId = null;
+        editingTitle = "";
+        await render();
         return;
       }
 
@@ -285,9 +330,20 @@ export function renderDecksScreen(appEl, { renderAll, save, state, currentUserId
         const title = e.target?.getAttribute("data-deck-title") || "this deck";
         if (confirm(`Delete "${title}"? This cannot be undone.`)) {
           await deleteDeck(currentUserId, deleteId);
+          editingDeckId = null;
           await render();
         }
         return;
+      }
+    });
+
+    // Keyboard shortcuts for the active rename input
+    appEl.querySelector("#decksList")?.addEventListener("keydown", (e) => {
+      if (!editingDeckId) return;
+      if (e.key === "Enter") {
+        appEl.querySelector(`[data-save-rename="${editingDeckId}"]`)?.click();
+      } else if (e.key === "Escape") {
+        appEl.querySelector(`[data-cancel-rename="${editingDeckId}"]`)?.click();
       }
     });
   }
