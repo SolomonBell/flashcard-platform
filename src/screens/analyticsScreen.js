@@ -518,7 +518,6 @@ export function renderAnalyticsScreen(appEl, { currentUserId }) {
                 <thead>
                   <tr style="border-bottom:2px solid var(--border);">
                     <th style="text-align:left;padding:8px 6px;font-weight:600;">Student</th>
-                    <th style="text-align:center;padding:8px 6px;font-weight:600;">Decks Studied</th>
                     <th style="text-align:center;padding:8px 6px;font-weight:600;">Cards Attempted</th>
                     <th style="text-align:center;padding:8px 6px;font-weight:600;">Accuracy</th>
                     <th style="text-align:center;padding:8px 6px;font-weight:600;">Last Active</th>
@@ -526,18 +525,16 @@ export function renderAnalyticsScreen(appEl, { currentUserId }) {
                 </thead>
                 <tbody>
                   ${cls.students.length === 0
-                    ? `<tr><td colspan="5" style="text-align:center;padding:16px;color:var(--muted);">
+                    ? `<tr><td colspan="4" style="text-align:center;padding:16px;color:var(--muted);">
                         No students in this class yet.</td></tr>`
                     : cls.students.map(sid => {
                         const st = deckStudentStats[sid] ?? {};
-                        const decksStudied   = st.decksStudied   != null ? String(st.decksStudied)   : "—";
                         const cardsAttempted = st.cardsAttempted != null ? String(st.cardsAttempted) : "—";
                         const accuracy       = st.accuracy       != null ? st.accuracy + "%"         : "—";
                         const lastActive     = formatRelativeDate(st.lastStudiedAt);
                         return `
                       <tr style="border-bottom:1px solid var(--border);">
                         <td style="padding:8px 6px;">${escapeHtml(sid)}</td>
-                        <td style="text-align:center;padding:8px 6px;${decksStudied   === "—" ? "color:var(--muted);" : ""}">${decksStudied}</td>
                         <td style="text-align:center;padding:8px 6px;${cardsAttempted === "—" ? "color:var(--muted);" : ""}">${cardsAttempted}</td>
                         <td style="text-align:center;padding:8px 6px;${accuracy       === "—" ? "color:var(--muted);" : ""}">${accuracy}</td>
                         <td style="text-align:center;padding:8px 6px;${lastActive     === "—" ? "color:var(--muted);" : ""}">${lastActive}</td>
