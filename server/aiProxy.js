@@ -175,7 +175,7 @@ function readBody(req) {
 // ── Process-level safety net ─────────────────────────────────────────────────
 // Prevents the process from dying silently on any unhandled async error.
 
-console.log("AI PROXY BUILD MARKER 27f9d48");
+console.log("AI PROXY BUILD MARKER 59c51d8");
 
 process.on("uncaughtException",  (err) => console.error("[uncaughtException]",  err));
 process.on("unhandledRejection", (err) => console.error("[unhandledRejection]", err));
