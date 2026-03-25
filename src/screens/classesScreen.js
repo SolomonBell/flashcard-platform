@@ -7,7 +7,7 @@
 import {
   getCurrentUser,
   getClassesByTeacher, getClassesByStudent,
-  createClass, deleteClass,
+  createClass, updateClass, deleteClass,
   getSharedDecksByClass,
 } from "../data/store/index.js";
 import { escapeHtml } from "../utils.js";
@@ -25,76 +25,152 @@ export async function renderClassesScreen(appEl, { renderAll, state }) {
   }
 
   async function renderTeacher() {
-    const myClasses = await getClassesByTeacher(currentUser.id);
+    let editingClassId = null;
+    let editingName = "";
 
-    appEl.innerHTML = `
-      <section class="card" style="max-width:520px; margin:0 auto;">
-        <h2 style="margin:0; text-align:center;">Classes</h2>
+    async function render() {
+      const myClasses = await getClassesByTeacher(currentUser.id);
 
-        <div style="display:flex; gap:8px; margin-top:16px; margin-bottom:4px;">
-          <input type="text" id="newClassName" placeholder="Class name"
-            style="flex:1;" />
-          <button type="button" class="primary" id="createClassBtn">New Class</button>
-        </div>
+      appEl.innerHTML = `
+        <section class="card" style="max-width:520px; margin:0 auto;">
+          <h2 style="margin:0; text-align:center;">Classes</h2>
 
-        <div id="classesList" style="margin-top:8px;">
-          ${myClasses.length === 0
-            ? `<p class="small" style="color:var(--muted); text-align:center; margin-top:8px;">
-                No classes yet. Create one above.
-               </p>`
-            : myClasses.map(cls => `
-              <div style="display:grid; grid-template-columns:1fr auto; align-items:center; gap:8px;
-                          padding:10px 12px; border:1px solid var(--border, #e5e7eb);
-                          border-radius:10px; margin-bottom:8px;">
-                <span style="font-weight:600; word-break:break-word;">
-                  ${escapeHtml(cls.name)}
-                </span>
-                <div style="display:flex; gap:6px;">
-                  <button type="button" class="primary small" style="padding:3px 8px; font-size:0.8rem;"
-                    data-open-class="${escapeHtml(cls.id)}"
-                    data-class-name="${escapeHtml(cls.name)}">Open</button>
-                  <button type="button" class="danger small" style="padding:3px 8px; font-size:0.8rem;"
-                    data-delete-class="${escapeHtml(cls.id)}"
-                    data-class-name="${escapeHtml(cls.name)}">Delete</button>
-                </div>
-              </div>
-            `).join("")}
-        </div>
-      </section>
-    `;
+          <div style="display:flex; gap:8px; margin-top:16px; margin-bottom:4px;">
+            <input type="text" id="newClassName" placeholder="Class name"
+              style="flex:1;" />
+            <button type="button" class="primary" id="createClassBtn">New Class</button>
+          </div>
 
-    appEl.querySelector("#createClassBtn")?.addEventListener("click", async () => {
-      const input = appEl.querySelector("#newClassName");
-      const name = input?.value?.trim() || "New Class";
-      await createClass(currentUser.id, name);
-      if (input) input.value = "";
-      await renderTeacher();
-    });
+          <div id="classesList" style="margin-top:8px;">
+            ${myClasses.length === 0
+              ? `<p class="small" style="color:var(--muted); text-align:center; margin-top:8px;">
+                  No classes yet. Create one above.
+                 </p>`
+              : myClasses.map(cls => {
+                  const isEditing = cls.id === editingClassId;
+                  return `
+                    <div style="display:grid; grid-template-columns:1fr auto; align-items:center; gap:8px;
+                                padding:10px 12px; border:1px solid var(--border, #e5e7eb);
+                                border-radius:10px; margin-bottom:8px;">
+                      ${isEditing
+                        ? `<input type="text" class="rename-input" data-class-id="${escapeHtml(cls.id)}"
+                             value="${escapeHtml(editingName)}" style="font-weight:600; padding:2px 6px;" />`
+                        : `<span style="font-weight:600; word-break:break-word;">${escapeHtml(cls.name)}</span>`
+                      }
+                      <div style="display:flex; gap:6px;">
+                        ${isEditing
+                          ? `<button type="button" class="primary small" style="padding:3px 8px; font-size:0.8rem;"
+                               data-save-rename="${escapeHtml(cls.id)}">Save</button>
+                             <button type="button" class="small" style="padding:3px 8px; font-size:0.8rem;"
+                               data-cancel-rename="${escapeHtml(cls.id)}">Cancel</button>`
+                          : `<button type="button" class="primary small" style="padding:3px 8px; font-size:0.8rem;"
+                               data-open-class="${escapeHtml(cls.id)}"
+                               data-class-name="${escapeHtml(cls.name)}">Open</button>
+                             <button type="button" class="small" style="padding:3px 8px; font-size:0.8rem;"
+                               data-rename-class="${escapeHtml(cls.id)}"
+                               data-class-name="${escapeHtml(cls.name)}">Rename</button>
+                             <button type="button" class="danger small" style="padding:3px 8px; font-size:0.8rem;"
+                               data-delete-class="${escapeHtml(cls.id)}"
+                               data-class-name="${escapeHtml(cls.name)}">Delete</button>`
+                        }
+                      </div>
+                    </div>
+                  `;
+                }).join("")}
+          </div>
+        </section>
+      `;
 
-    appEl.querySelector("#newClassName")?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") appEl.querySelector("#createClassBtn")?.click();
-    });
-
-    appEl.querySelector("#classesList")?.addEventListener("click", async (e) => {
-      const openId = e.target?.getAttribute("data-open-class");
-      if (openId) {
-        state.classId = openId;
-        state.className = e.target?.getAttribute("data-class-name") || "";
-        state.screen = "classDetail";
-        renderAll();
-        return;
-      }
-
-      const deleteId = e.target?.getAttribute("data-delete-class");
-      if (deleteId) {
-        const name = e.target?.getAttribute("data-class-name") || "this class";
-        if (confirm(`Delete "${name}"? This cannot be undone.`)) {
-          await deleteClass(deleteId);
-          await renderTeacher();
+      // Focus and select-all the rename input when entering edit mode
+      if (editingClassId) {
+        const renameInput = appEl.querySelector(`.rename-input[data-class-id="${editingClassId}"]`);
+        if (renameInput) {
+          renameInput.focus();
+          renameInput.select();
         }
-        return;
       }
-    });
+
+      appEl.querySelector("#createClassBtn")?.addEventListener("click", async () => {
+        const input = appEl.querySelector("#newClassName");
+        const name = input?.value?.trim() || "New Class";
+        await createClass(currentUser.id, name);
+        if (input) input.value = "";
+        editingClassId = null;
+        await render();
+      });
+
+      appEl.querySelector("#newClassName")?.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") appEl.querySelector("#createClassBtn")?.click();
+      });
+
+      appEl.querySelector("#classesList")?.addEventListener("click", async (e) => {
+        // Open
+        const openId = e.target?.getAttribute("data-open-class");
+        if (openId) {
+          state.classId = openId;
+          state.className = e.target?.getAttribute("data-class-name") || "";
+          state.screen = "classDetail";
+          renderAll();
+          return;
+        }
+
+        // Rename — enter edit mode
+        const renameId = e.target?.getAttribute("data-rename-class");
+        if (renameId) {
+          editingClassId = renameId;
+          editingName = e.target?.getAttribute("data-class-name") || "";
+          await render();
+          return;
+        }
+
+        // Save rename
+        const saveId = e.target?.getAttribute("data-save-rename");
+        if (saveId) {
+          const input = appEl.querySelector(`.rename-input[data-class-id="${saveId}"]`);
+          const newName = input?.value?.trim();
+          if (newName && newName !== editingName) {
+            await updateClass(saveId, { name: newName });
+          }
+          editingClassId = null;
+          editingName = "";
+          await render();
+          return;
+        }
+
+        // Cancel rename
+        const cancelId = e.target?.getAttribute("data-cancel-rename");
+        if (cancelId) {
+          editingClassId = null;
+          editingName = "";
+          await render();
+          return;
+        }
+
+        // Delete
+        const deleteId = e.target?.getAttribute("data-delete-class");
+        if (deleteId) {
+          const name = e.target?.getAttribute("data-class-name") || "this class";
+          if (confirm(`Delete "${name}"? This cannot be undone.`)) {
+            await deleteClass(deleteId);
+            editingClassId = null;
+            await render();
+          }
+          return;
+        }
+      });
+
+      // Keyboard shortcuts for the active rename input
+      appEl.querySelector("#classesList")?.addEventListener("keydown", (e) => {
+        if (!editingClassId) return;
+        if (e.key === "Enter") {
+          appEl.querySelector(`[data-save-rename="${editingClassId}"]`)?.click();
+        } else if (e.key === "Escape") {
+          appEl.querySelector(`[data-cancel-rename="${editingClassId}"]`)?.click();
+        }
+      });
+    }
+
+    await render();
   }
 
   async function renderStudent() {
