@@ -421,11 +421,6 @@ export function renderAnalyticsScreen(appEl, { currentUserId }) {
     appEl.innerHTML = `
       <section class="card" style="max-width:700px;margin:0 auto;">
         <h2 style="margin:0;text-align:center;">Analytics</h2>
-        <p class="small" style="color:var(--muted);text-align:center;margin:6px 0 0;">
-          In local mode, activity/accuracy may reflect only this device.
-          Full class analytics will be enabled with Supabase.
-        </p>
-
         ${viewModel.length === 0 ? `
           <p class="small" style="color:var(--muted);text-align:center;margin-top:16px;">
             No classes yet. Create a class first.
