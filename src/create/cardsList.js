@@ -28,11 +28,10 @@ export function renderCardsList(state) {
         </div>
       </div>
       
-      <div style="margin-top:8px; display:flex; align-items:center; gap:8px;">
-        <span style="font-size:13px; color:var(--muted,#6b7280);">Answer Matching</span>
+      <div style="margin-top:10px; display:flex; justify-content:center;">
         <div class="grading-mode-group" data-id="${c.id}" style="display:inline-flex; border:1px solid var(--border,#e5e7eb); border-radius:8px; overflow:hidden; font-size:12px;">
-          <button type="button" class="grading-mode-btn${_gradingMode(c) === 'exact' ? ' active' : ''}" data-mode="exact" title="Requires the answer to match exactly." style="padding:4px 10px; border:none; background:${_gradingMode(c) === 'exact' ? 'var(--primary,#3b82f6)' : 'transparent'}; color:${_gradingMode(c) === 'exact' ? '#fff' : 'inherit'}; cursor:pointer;">Exact Match</button>
-          <button type="button" class="grading-mode-btn${_gradingMode(c) === 'concept' ? ' active' : ''}" data-mode="concept" title="Accepts answers with the same meaning." style="padding:4px 10px; border:none; border-left:1px solid var(--border,#e5e7eb); background:${_gradingMode(c) === 'concept' ? 'var(--primary,#3b82f6)' : 'transparent'}; color:${_gradingMode(c) === 'concept' ? '#fff' : 'inherit'}; cursor:pointer;">Concept Match</button>
+          <button type="button" class="grading-mode-btn" data-mode="exact" title="Requires the answer to match exactly." style="padding:4px 12px; border:none; background:${_gradingMode(c) === 'exact' ? '#bfdbfe' : 'transparent'}; color:${_gradingMode(c) === 'exact' ? '#1d4ed8' : 'var(--muted,#6b7280)'}; cursor:pointer; pointer-events:auto;">Exact Match</button>
+          <button type="button" class="grading-mode-btn" data-mode="concept" title="Accepts answers with the same meaning." style="padding:4px 12px; border:none; border-left:1px solid var(--border,#e5e7eb); background:${_gradingMode(c) === 'concept' ? '#bfdbfe' : 'transparent'}; color:${_gradingMode(c) === 'concept' ? '#1d4ed8' : 'var(--muted,#6b7280)'}; cursor:pointer; pointer-events:auto;">Concept Match</button>
         </div>
       </div>
     </div>
@@ -73,8 +72,8 @@ export function wireCardsListHandlers(rootEl, state, { save, render, blankCard }
       // Update button styles without full re-render
       group.querySelectorAll(".grading-mode-btn").forEach(b => {
         const isActive = b.getAttribute("data-mode") === mode;
-        b.style.background = isActive ? "var(--primary,#3b82f6)" : "transparent";
-        b.style.color = isActive ? "#fff" : "inherit";
+        b.style.background = isActive ? "#bfdbfe" : "transparent";
+        b.style.color = isActive ? "#1d4ed8" : "var(--muted,#6b7280)";
       });
 
       save();
