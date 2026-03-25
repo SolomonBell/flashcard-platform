@@ -28,6 +28,7 @@ export function requireBetaAccess() {
         <h2 style="margin:0 0 6px;font-size:1.3rem;">FirstStepStudy Beta</h2>
         <p style="margin:0 0 24px;color:var(--muted,#6b7280);font-size:0.9rem;">
           Enter your access code to continue.
+          Computers only. 
         </p>
         <input
           id="betaCodeInput"
