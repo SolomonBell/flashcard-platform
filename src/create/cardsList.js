@@ -39,7 +39,7 @@ export function renderCardsList(state) {
 }
 
 export function wireCardsListHandlers(rootEl, state, { save, render, blankCard }) {
-  // ✅ Auto-save edits WITHOUT re-rendering (prevents focus loss)
+  // Auto-save edits WITHOUT re-rendering (prevents focus loss)
   rootEl.querySelectorAll("textarea[data-field]").forEach(el => {
     el.addEventListener("input", (e) => {
       const row = e.target.closest(".cardRow");
@@ -50,7 +50,7 @@ export function wireCardsListHandlers(rootEl, state, { save, render, blankCard }
 
       card[field] = e.target.value;
       save();
-      // 🚫 no render() here — but do update the Start Studying button state
+      // No re-render here (prevents focus loss) — update the Start Studying button state only
       const startBtn = document.querySelector("#startStudy");
       if (startBtn) startBtn.disabled = getValidCards(state).length < 1;
     });

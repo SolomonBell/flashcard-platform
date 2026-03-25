@@ -2,7 +2,7 @@
  * Store entry point.
  *
  * Set USE_SUPABASE = true to route all store calls through supabaseStore.
- * Set USE_SUPABASE = false (default) to use localStore (localStorage).
+ * Set USE_SUPABASE = false to use localStore (localStorage).
  *
  * Named exports below are sourced from whichever store is active, so all
  * existing call sites (`import { listDecks } from "…/store/index.js"`) work

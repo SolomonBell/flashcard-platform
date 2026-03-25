@@ -1,8 +1,8 @@
 /**
  * supabaseStore — Supabase-backed implementation of the store interface.
  *
- * Methods that are fully implemented return real data from Supabase.
- * Methods not yet implemented call `stub`, which rejects with a clear error.
+ * All deck, class, and shared-deck methods are fully implemented.
+ * Auth methods are stubs — authentication is handled by authStore.js directly.
  * Method signatures and return shapes are identical to localStore.
  *
  * ── Required Supabase tables ──────────────────────────────────────────────────
@@ -35,11 +35,10 @@
  *     deck_id  TEXT REFERENCES decks(id) ON DELETE SET NULL
  *   );
  *
- * NOTE on user_id: TEXT for now to stay decoupled from Supabase Auth UUIDs
- * while auth is not yet wired.  After auth integration, migrate user_id columns
- * to UUID and add a foreign key to auth.users, then enable RLS policies.
+ * NOTE on user_id: Stored as TEXT (auth.uid()::text) rather than UUID to avoid
+ * a schema migration.  RLS policies use the ::text cast to match correctly.
  *
- * ── Row Level Security (add AFTER auth is wired) ─────────────────────────────
+ * ── Row Level Security (applied) ─────────────────────────────────────────────
  *
  *   ALTER TABLE decks            ENABLE ROW LEVEL SECURITY;
  *   ALTER TABLE deck_data        ENABLE ROW LEVEL SECURITY;
@@ -47,7 +46,7 @@
  *
  *   CREATE POLICY "owner" ON decks
  *     FOR ALL USING (user_id = auth.uid()::text);
- *   -- (add matching policies for deck_data and user_active_deck)
+ *   -- (matching policies on deck_data and user_active_deck)
  *
  * ─────────────────────────────────────────────────────────────────────────────
  */
@@ -369,7 +368,7 @@ export const supabaseStore = {
    */
   migrateFromOldFormat: async () => false,
 
-  // ── Auth — not yet implemented ────────────────────────────────────────────
+  // ── Auth — handled by authStore.js directly; stubs kept for interface parity ─
 
   loadUsers:            stub,
   saveUsers:            stub,
@@ -378,7 +377,7 @@ export const supabaseStore = {
   getSession:           stub,
   setSession:           stub,
   clearSession:         stub,
-  // Delegates to authStore's synchronous in-memory cache — not a real DB call.
+  // Returns the in-memory cached user from authStore — not a real DB call.
   getCurrentUser:       () => Promise.resolve(_getAuthCurrentUser()),
 
   // ── Classes ───────────────────────────────────────────────────────────────

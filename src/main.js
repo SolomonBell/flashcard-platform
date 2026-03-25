@@ -223,10 +223,10 @@ async function renderAll() {
       startSession({
         userId: currentUser.id,
         deckContext: "personal",
-        deckId: state.deckId || `deck_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        deckId: state.deckId || `deck_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
       });
       if (!state.deckId) {
-        state.deckId = `deck_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        state.deckId = `deck_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
         save();
       }
     } else if (state.screen === "sharedStudy") {

@@ -1,8 +1,5 @@
 import { getSupabaseClient } from "../supabaseClient.js";
 
-// Kept for any legacy imports that reference this constant.
-export const STORAGE_ANALYTICS_KEY = "knowit_analytics_v1";
-
 const MAX_HISTORY_ENTRIES = 50;
 
 // ── In-memory session state ───────────────────────────────────────────────────

@@ -178,7 +178,7 @@ export function renderDecksScreen(appEl, { renderAll, save, state, currentUserId
         return;
       }
 
-      showStatus("Generating flashcards with AI. Please be patient.");
+      showStatus("Generating flashcards. Please be patient.");
 
       let rawCards;
       try {
