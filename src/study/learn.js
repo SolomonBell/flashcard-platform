@@ -1,5 +1,6 @@
 import { buildMCOptions } from "./study.js";
 import { escapeHtml } from "../utils.js";
+import { recordAnswer } from "../analytics/analyticsStore.js";
 
 export function renderLearn(appEl, state, current, deps) {
   const progress = deps.renderProgressBar(state);
@@ -123,6 +124,7 @@ export function renderLearn(appEl, state, current, deps) {
     }
 
     deps.save();
+    recordAnswer({ isCorrect: choice.isCorrect });
     deps.onAnswerStats?.({ correct: choice.isCorrect, current });
 
     setTimeout(() => {
