@@ -30,8 +30,8 @@ export function renderCardsList(state) {
       
       <div style="margin-top:10px; display:flex; justify-content:center;">
         <div class="grading-mode-group" data-id="${c.id}" style="display:inline-flex; border:1px solid var(--border,#e5e7eb); border-radius:8px; overflow:hidden; font-size:12px;">
-          <button type="button" class="grading-mode-btn" data-mode="exact" title="Requires the answer to match exactly." style="padding:4px 12px; border:none; background:${_gradingMode(c) === 'exact' ? '#bfdbfe' : 'transparent'}; color:${_gradingMode(c) === 'exact' ? '#1d4ed8' : 'var(--muted,#6b7280)'}; cursor:pointer; pointer-events:auto;">Exact Match</button>
-          <button type="button" class="grading-mode-btn" data-mode="concept" title="Accepts answers with the same meaning." style="padding:4px 12px; border:none; border-left:1px solid var(--border,#e5e7eb); background:${_gradingMode(c) === 'concept' ? '#bfdbfe' : 'transparent'}; color:${_gradingMode(c) === 'concept' ? '#1d4ed8' : 'var(--muted,#6b7280)'}; cursor:pointer; pointer-events:auto;">Concept Match</button>
+          <button type="button" class="grading-mode-btn" data-mode="exact" data-tooltip="Requires the answer to match exactly." style="padding:4px 12px; border:none; background:${_gradingMode(c) === 'exact' ? '#bfdbfe' : 'transparent'}; color:${_gradingMode(c) === 'exact' ? '#1d4ed8' : 'var(--muted,#6b7280)'}; cursor:pointer;">Exact Match</button>
+          <button type="button" class="grading-mode-btn" data-mode="concept" data-tooltip="Accepts answers with the same meaning." style="padding:4px 12px; border:none; border-left:1px solid var(--border,#e5e7eb); background:${_gradingMode(c) === 'concept' ? '#bfdbfe' : 'transparent'}; color:${_gradingMode(c) === 'concept' ? '#1d4ed8' : 'var(--muted,#6b7280)'}; cursor:pointer;">Concept Match</button>
         </div>
       </div>
     </div>
@@ -54,6 +54,41 @@ export function wireCardsListHandlers(rootEl, state, { save, render, blankCard }
       const startBtn = document.querySelector("#startStudy");
       if (startBtn) startBtn.disabled = getValidCards(state).length < 1;
     });
+  });
+
+  // Custom tooltip for grading mode buttons (faster than native title)
+  let _tooltipEl = null;
+  let _tooltipTimer = null;
+
+  function _showTooltip(btn) {
+    _tooltipEl = document.createElement("div");
+    _tooltipEl.textContent = btn.getAttribute("data-tooltip");
+    _tooltipEl.style.cssText =
+      "position:fixed; z-index:9999; pointer-events:none;" +
+      "background:#1f2937; color:#fff; font-size:11px; line-height:1.4;" +
+      "padding:4px 8px; border-radius:5px; white-space:nowrap;" +
+      "box-shadow:0 2px 6px rgba(0,0,0,0.25);";
+    document.body.appendChild(_tooltipEl);
+
+    const r = btn.getBoundingClientRect();
+    const tw = _tooltipEl.offsetWidth;
+    const left = r.left + r.width / 2 - tw / 2;
+    const top  = r.bottom + 6;
+    _tooltipEl.style.left = Math.max(4, left) + "px";
+    _tooltipEl.style.top  = top + "px";
+  }
+
+  function _hideTooltip() {
+    clearTimeout(_tooltipTimer);
+    _tooltipTimer = null;
+    if (_tooltipEl) { _tooltipEl.remove(); _tooltipEl = null; }
+  }
+
+  rootEl.querySelectorAll(".grading-mode-btn[data-tooltip]").forEach(btn => {
+    btn.addEventListener("mouseenter", () => {
+      _tooltipTimer = setTimeout(() => _showTooltip(btn), 90);
+    });
+    btn.addEventListener("mouseleave", _hideTooltip);
   });
 
   // Handle grading mode button group
