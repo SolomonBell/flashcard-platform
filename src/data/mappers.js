@@ -96,6 +96,7 @@ export function mapCard(input) {
     lastSeenAt: toIsoString(input.lastSeenAt ?? input.last_seen_at),
     stage3Mastered: Boolean(input.stage3Mastered ?? input.stage3_mastered),
     longAnswer: Boolean(input.longAnswer ?? input.long_answer),
+    gradingMode: input.gradingMode ?? input.grading_mode ?? (input.longAnswer ?? input.long_answer ? "concept" : "exact"),
   };
 }
 

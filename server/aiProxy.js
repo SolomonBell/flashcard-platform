@@ -175,14 +175,10 @@ function readBody(req) {
 // ── Process-level safety net ─────────────────────────────────────────────────
 // Prevents the process from dying silently on any unhandled async error.
 
-console.log("AI PROXY BUILD MARKER 59c51d8");
-
 process.on("uncaughtException",  (err) => console.error("[uncaughtException]",  err));
 process.on("unhandledRejection", (err) => console.error("[unhandledRejection]", err));
 
 const server = http.createServer(async (req, res) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-
   // Health check — must respond before any other logic so Railway does not
   // consider the service unhealthy and restart the container.
   if (req.url === "/health" || req.url === "/") {

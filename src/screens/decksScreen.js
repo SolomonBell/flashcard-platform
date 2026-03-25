@@ -252,6 +252,7 @@ export function renderDecksScreen(appEl, { renderAll, save, state, currentUserId
           lastSeenAt: null,
           stage3Mastered: false,
           longAnswer: c.back.trim().split(/\s+/).length > LONG_ANSWER_WORD_THRESHOLD,
+          gradingMode: c.back.trim().split(/\s+/).length > LONG_ANSWER_WORD_THRESHOLD ? "concept" : "exact",
         }));
 
         await openDeck(newId, cards);

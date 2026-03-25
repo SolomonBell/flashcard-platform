@@ -176,8 +176,9 @@ export function renderRecall(appEl, state, current, deps) {
         let isCorrect;
         let aiFeedback = null;
 
-        if (c.longAnswer) {
-          // Use AI grader for long answer cards
+        const _mode = c.gradingMode ?? (c.longAnswer ? "concept" : "exact");
+        if (_mode === "concept") {
+          // Use AI grader for concept match cards
           const graderResult = await gradeLongAnswer({
             promptFront: current.front,
             expectedAnswer: correctAnswer,
@@ -201,7 +202,7 @@ export function renderRecall(appEl, state, current, deps) {
 
         deps.save();
 
-        // Record answer in analytics (use grader.correct for longAnswer cards)
+        // Record answer in analytics (use grader.correct for concept match cards)
         recordAnswer({ isCorrect });
         deps.onAnswerStats?.({ correct: isCorrect, current });
 

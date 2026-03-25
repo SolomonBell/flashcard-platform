@@ -1,6 +1,11 @@
 import { escapeHtml } from "../utils.js";
 import { getValidCards } from "./create.js";
 
+function _gradingMode(card) {
+  if (card.gradingMode) return card.gradingMode;
+  return card.longAnswer ? "concept" : "exact";
+}
+
 export function renderCardsList(state) {
   return state.cards.map((c, idx) => `
     <div class="cardRow" data-id="${c.id}">
@@ -23,11 +28,12 @@ export function renderCardsList(state) {
         </div>
       </div>
       
-      <div style="margin-top:8px;">
-        <label style="display:flex; align-items:center; gap:6px; font-size:13px;">
-          <input type="checkbox" data-field="longAnswer" ${c.longAnswer ? "checked" : ""} />
-          <span>Long Answer Grading</span>
-        </label>
+      <div style="margin-top:8px; display:flex; align-items:center; gap:8px;">
+        <span style="font-size:13px; color:var(--muted,#6b7280);">Answer Matching</span>
+        <div class="grading-mode-group" data-id="${c.id}" style="display:inline-flex; border:1px solid var(--border,#e5e7eb); border-radius:8px; overflow:hidden; font-size:12px;">
+          <button type="button" class="grading-mode-btn${_gradingMode(c) === 'exact' ? ' active' : ''}" data-mode="exact" title="Requires the answer to match exactly." style="padding:4px 10px; border:none; background:${_gradingMode(c) === 'exact' ? 'var(--primary,#3b82f6)' : 'transparent'}; color:${_gradingMode(c) === 'exact' ? '#fff' : 'inherit'}; cursor:pointer;">Exact Match</button>
+          <button type="button" class="grading-mode-btn${_gradingMode(c) === 'concept' ? ' active' : ''}" data-mode="concept" title="Accepts answers with the same meaning." style="padding:4px 10px; border:none; border-left:1px solid var(--border,#e5e7eb); background:${_gradingMode(c) === 'concept' ? 'var(--primary,#3b82f6)' : 'transparent'}; color:${_gradingMode(c) === 'concept' ? '#fff' : 'inherit'}; cursor:pointer;">Concept Match</button>
+        </div>
       </div>
     </div>
   `).join("");
@@ -51,17 +57,27 @@ export function wireCardsListHandlers(rootEl, state, { save, render, blankCard }
     });
   });
 
-  // Handle checkbox changes for longAnswer
-  rootEl.querySelectorAll("input[data-field='longAnswer']").forEach(el => {
-    el.addEventListener("change", (e) => {
-      const row = e.target.closest(".cardRow");
-      const id = row.getAttribute("data-id");
+  // Handle grading mode button group
+  rootEl.querySelectorAll(".grading-mode-group").forEach(group => {
+    group.addEventListener("click", (e) => {
+      const btn = e.target.closest(".grading-mode-btn");
+      if (!btn) return;
+      const id = group.getAttribute("data-id");
       const card = state.cards.find(x => x.id === id);
       if (!card) return;
 
-      card.longAnswer = e.target.checked;
+      const mode = btn.getAttribute("data-mode");
+      card.gradingMode = mode;
+      card.longAnswer = mode === "concept";
+
+      // Update button styles without full re-render
+      group.querySelectorAll(".grading-mode-btn").forEach(b => {
+        const isActive = b.getAttribute("data-mode") === mode;
+        b.style.background = isActive ? "var(--primary,#3b82f6)" : "transparent";
+        b.style.color = isActive ? "#fff" : "inherit";
+      });
+
       save();
-      // 🚫 no render() here
     });
   });
 

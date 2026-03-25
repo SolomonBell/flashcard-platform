@@ -11,6 +11,7 @@ export function blankCard() {
     lastSeenAt: null,
     stage3Mastered: false,
     longAnswer: false,
+    gradingMode: "exact",
   };
 }
 
