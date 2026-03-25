@@ -126,7 +126,14 @@ async function _persistSession(session) {
     const sb = await getSupabaseClient();
 
     // 1. Record the completed session row
-    await sb.from("study_sessions").insert({
+    console.log("[analytics debug] _persistSession attempt:", {
+      id: session.id,
+      userId: session.userId,
+      deckId: session.deckId,
+      deckContext: session.deckContext,
+      answersSubmitted: session.interactions.answersSubmitted,
+    });
+    const { error: insertError } = await sb.from("study_sessions").insert({
       id:                 session.id,
       user_id:            session.userId,
       deck_id:            session.deckId,
@@ -138,6 +145,7 @@ async function _persistSession(session) {
       correct_count:      session.interactions.correctCount,
       incorrect_count:    session.interactions.incorrectCount,
     });
+    console.log("[analytics debug] study_sessions insert result:", insertError?.message ?? "ok");
 
     // 2. Read current aggregate so we can add to running totals
     const { data: agg } = await sb

@@ -835,10 +835,15 @@ export const supabaseStore = {
 
       // Resolve student UUIDs → emails via user_profiles
       const studentUuids = [...new Set(progressRows.map(p => p.student_id))];
-      const { data: profiles } = await sb
+      const { data: profiles, error: profilesError } = await sb
         .from("user_profiles")
         .select("id, email")
         .in("id", studentUuids);
+      console.log("[analytics debug] user_profiles query:", {
+        studentUuids,
+        profilesReturned: profiles?.length ?? 0,
+        profilesError: profilesError?.message ?? null,
+      });
       const emailByUuid = {};
       for (const p of (profiles || [])) emailByUuid[p.id] = (p.email || "").toLowerCase();
 
