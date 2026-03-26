@@ -425,12 +425,18 @@ export function renderAnalyticsScreen(appEl, { currentUserId }) {
                   <th style="text-align:center;padding:7px 6px;font-weight:600;">Attempts</th>
                   <th style="text-align:center;padding:7px 6px;font-weight:600;">Correct</th>
                   <th style="text-align:center;padding:7px 6px;font-weight:600;">
-                    <select id="sortAccuracySelect"
-                      style="font-size:11px;padding:2px 4px;border:1px solid var(--border);
-                        border-radius:6px;color:var(--muted);font-weight:600;cursor:pointer;">
-                      <option value="hardest" ${!cardSortAsc ? "selected" : ""}>Accuracy ↓</option>
-                      <option value="easiest" ${cardSortAsc ? "selected" : ""}>Accuracy ↑</option>
-                    </select>
+                    <button id="sortAccuracyBtn" style="
+                      background:none;border:none;cursor:pointer;padding:0;
+                      display:inline-flex;align-items:center;gap:5px;
+                      font-size:inherit;font-weight:600;color:inherit;
+                    ">
+                      Accuracy
+                      <svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true" style="
+                        color:var(--muted);flex-shrink:0;
+                        transform:${cardSortAsc ? "rotate(180deg)" : "rotate(0deg)"};
+                        transition:transform 0.18s ease;
+                      "><path d="M1 3 L5 8 L9 3 Z" fill="currentColor"/></svg>
+                    </button>
                   </th>
                 </tr>
               </thead>
@@ -560,8 +566,8 @@ export function renderAnalyticsScreen(appEl, { currentUserId }) {
       render();
     });
 
-    appEl.querySelector("#sortAccuracySelect")?.addEventListener("change", (e) => {
-      cardSortAsc = e.target.value === "easiest";
+    appEl.querySelector("#sortAccuracyBtn")?.addEventListener("click", () => {
+      cardSortAsc = !cardSortAsc;
       render();
     });
 
