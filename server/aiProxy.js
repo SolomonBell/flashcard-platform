@@ -181,16 +181,20 @@ const server = http.createServer(async (req, res) => {
 
   try {
 
+  console.log(`[req] ${req.method} ${req.url} origin=${req.headers.origin ?? "(none)"}`);
+
   setCorsHeaders(req, res);
 
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
+    console.log(`[cors] preflight → 204`);
     res.writeHead(204);
     res.end();
     return;
   }
 
   if (req.method !== "POST" || (req.url !== "/grade" && req.url !== "/generate-deck")) {
+    console.log(`[req] 404 — unrecognized method/path`);
     res.writeHead(404, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Not found" }));
     return;
@@ -199,6 +203,7 @@ const server = http.createServer(async (req, res) => {
   // ── Rate limit ──────────────────────────────────────────────────────────────
   const ip = req.socket.remoteAddress || "unknown";
   if (!checkRateLimit(ip)) {
+    console.log(`[req] 429 — rate limit for ${ip}`);
     res.writeHead(429, { "Content-Type": "application/json", "Retry-After": "60" });
     res.end(JSON.stringify({ error: "Too many requests. Please wait a minute." }));
     return;
@@ -206,6 +211,7 @@ const server = http.createServer(async (req, res) => {
 
   // ── Proxy secret ────────────────────────────────────────────────────────────
   if (PROXY_SECRET && req.headers["x-proxy-secret"] !== PROXY_SECRET) {
+    console.log(`[req] 401 — proxy secret mismatch`);
     res.writeHead(401, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Unauthorized" }));
     return;
