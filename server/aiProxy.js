@@ -69,6 +69,58 @@ setInterval(() => {
   }
 }, 5 * 60_000).unref();
 
+// ── JSON repair ──────────────────────────────────────────────────────────────
+
+/**
+ * Attempts to fix unescaped double-quotes inside JSON string values.
+ * The model occasionally emits:  "front": "What is a "sect"?"
+ * which is invalid JSON.  This scanner fixes inner quotes by peeking ahead:
+ * a " is a closing delimiter only if the next non-space char is : , } or ].
+ * Returns the repaired string (may still be invalid; caller must re-parse).
+ */
+function repairJson(text) {
+  let out = "";
+  let inString = false;
+  let i = 0;
+
+  while (i < text.length) {
+    const ch = text[i];
+
+    // Handle existing escape sequences so we never double-escape them.
+    if (inString && ch === "\\") {
+      out += ch + (text[i + 1] ?? "");
+      i += 2;
+      continue;
+    }
+
+    if (ch === '"') {
+      if (!inString) {
+        inString = true;
+        out += ch;
+      } else {
+        // Peek past whitespace to see what follows this quote.
+        let j = i + 1;
+        while (j < text.length && (text[j] === " " || text[j] === "\t")) j++;
+        const next = text[j];
+        const isCloser = next === ":" || next === "," || next === "}" || next === "]" || j >= text.length;
+        if (isCloser) {
+          inString = false;
+          out += ch;
+        } else {
+          out += '\\"'; // inner quote — escape it
+        }
+      }
+      i++;
+      continue;
+    }
+
+    out += ch;
+    i++;
+  }
+
+  return out;
+}
+
 // ── Anthropic forwarding ─────────────────────────────────────────────────────
 
 function buildPrompt(promptFront, expectedAnswer, userAnswer) {
@@ -259,19 +311,26 @@ Rules:
 - Do not include trivial, obvious, or filler cards
 - Generate more cards for dense material, fewer for sparse material — let the content guide the count
 
+STRICT JSON OUTPUT RULES — you MUST follow all of these:
+- Return ONLY a raw JSON array. No markdown, no code fences, no commentary before or after.
+- Every string value must use only straight double-quotes as delimiters.
+- If a front or back value would contain a double-quote character, rephrase it to avoid the quote entirely. Do NOT use backslash-escaped quotes inside values.
+- Do not use curly quotes (\u201c \u201d) or any other non-ASCII quote characters.
+- The output must pass JSON.parse() with no modification.
+
 Text:
 ${truncatedText}
 
-Return ONLY valid JSON — an array of objects, no markdown fences, no commentary:
+Output format — exactly this, nothing else:
 [
   { "front": "question", "back": "answer" },
-  ...
+  { "front": "question", "back": "answer" }
 ]`;
 
     const anthropicBody = {
       model: MODEL,
       max_tokens: 4000,
-      temperature: 0.3,
+      temperature: 0,
       messages: [{ role: "user", content: deckPrompt }],
     };
 
@@ -333,12 +392,21 @@ Return ONLY valid JSON — an array of objects, no markdown fences, no commentar
     try {
       cards = JSON.parse(jsonText);
       if (!Array.isArray(cards)) throw new Error("Expected array");
-      console.log("[generate-deck] parsed", cards.length, "cards");
-    } catch (e) {
-      console.error("[generate-deck] JSON parse failed:", e.message, "— raw text:", claudeText.slice(0, 200));
-      res.writeHead(502, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Claude did not return valid JSON." }));
-      return;
+      console.log("[generate-deck] parsed", cards.length, "cards (first try)");
+    } catch (firstErr) {
+      // First parse failed — attempt one repair pass for unescaped inner quotes.
+      console.warn("[generate-deck] first parse failed:", firstErr.message, "— attempting repair");
+      try {
+        const repaired = repairJson(jsonText);
+        cards = JSON.parse(repaired);
+        if (!Array.isArray(cards)) throw new Error("Expected array");
+        console.log("[generate-deck] parsed", cards.length, "cards (after repair)");
+      } catch (repairErr) {
+        console.error("[generate-deck] repair parse failed:", repairErr.message, "— raw text:", claudeText.slice(0, 300));
+        res.writeHead(502, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Claude did not return valid JSON." }));
+        return;
+      }
     }
 
     const result = cards
