@@ -69,56 +69,44 @@ setInterval(() => {
   }
 }, 5 * 60_000).unref();
 
-// ── JSON repair ──────────────────────────────────────────────────────────────
+// ── Tagged-text card parser ───────────────────────────────────────────────────
 
 /**
- * Attempts to fix unescaped double-quotes inside JSON string values.
- * The model occasionally emits:  "front": "What is a "sect"?"
- * which is invalid JSON.  This scanner fixes inner quotes by peeking ahead:
- * a " is a closing delimiter only if the next non-space char is : , } or ].
- * Returns the repaired string (may still be invalid; caller must re-parse).
+ * Parses the model's tagged plain-text output into card objects.
+ *
+ * Expected format:
+ *   CARD
+ *   FRONT: What is a "sect"?
+ *   BACK: a subgroup within a larger religious body
+ *
+ * Returns an array of { front, back } objects with empty cards filtered out.
+ * This format tolerates quotes, control characters, and any other text that
+ * would break JSON.parse — there is nothing to escape or encode.
  */
-function repairJson(text) {
-  let out = "";
-  let inString = false;
-  let i = 0;
-
-  while (i < text.length) {
-    const ch = text[i];
-
-    // Handle existing escape sequences so we never double-escape them.
-    if (inString && ch === "\\") {
-      out += ch + (text[i + 1] ?? "");
-      i += 2;
-      continue;
-    }
-
-    if (ch === '"') {
-      if (!inString) {
-        inString = true;
-        out += ch;
-      } else {
-        // Peek past whitespace to see what follows this quote.
-        let j = i + 1;
-        while (j < text.length && (text[j] === " " || text[j] === "\t")) j++;
-        const next = text[j];
-        const isCloser = next === ":" || next === "," || next === "}" || next === "]" || j >= text.length;
-        if (isCloser) {
-          inString = false;
-          out += ch;
-        } else {
-          out += '\\"'; // inner quote — escape it
-        }
+function parseTaggedCards(text) {
+  const cards = [];
+  // Split on blank lines or lines containing only "CARD"
+  const blocks = text.split(/(?:^|\n)\s*CARD\s*(?:\n|$)/i);
+  for (const block of blocks) {
+    let front = null;
+    let back = null;
+    for (const raw of block.split("\n")) {
+      const line = raw.trimEnd();
+      if (front === null && /^FRONT:\s*/i.test(line)) {
+        front = line.replace(/^FRONT:\s*/i, "").trim();
+      } else if (back === null && /^BACK:\s*/i.test(line)) {
+        back = line.replace(/^BACK:\s*/i, "").trim();
+      } else if (front !== null && back === null && !/^BACK:\s*/i.test(line) && line !== "") {
+        // multi-line FRONT (rare but possible) — append
+        front += " " + line.trim();
+      } else if (back !== null && line !== "" && !/^FRONT:\s*/i.test(line)) {
+        // multi-line BACK — append
+        back += " " + line.trim();
       }
-      i++;
-      continue;
     }
-
-    out += ch;
-    i++;
+    if (front && back) cards.push({ front: front.trim(), back: back.trim() });
   }
-
-  return out;
+  return cards;
 }
 
 // ── Anthropic forwarding ─────────────────────────────────────────────────────
@@ -304,28 +292,32 @@ const server = http.createServer(async (req, res) => {
     const deckPrompt = `You are a flashcard generator. Read the following text and create as many high-quality flashcards as the material warrants — enough to cover all important facts, definitions, concepts, and ideas, but without padding or repetition.
 
 Rules:
-- Each "front" is a concise question or prompt (1 sentence max)
-- Each "back" is the correct answer (as short as possible while still complete)
+- Each FRONT is a concise question or prompt (1 sentence max)
+- Each BACK is the correct answer (as short as possible while still complete)
 - Cover every significant, testable idea in the text
 - Do not repeat the same concept twice even with different wording
 - Do not include trivial, obvious, or filler cards
 - Generate more cards for dense material, fewer for sparse material — let the content guide the count
 
-STRICT JSON OUTPUT RULES — you MUST follow all of these:
-- Return ONLY a raw JSON array. No markdown, no code fences, no commentary before or after.
-- Every string value must use only straight double-quotes as delimiters.
-- If a front or back value would contain a double-quote character, rephrase it to avoid the quote entirely. Do NOT use backslash-escaped quotes inside values.
-- Do not use curly quotes (\u201c \u201d) or any other non-ASCII quote characters.
-- The output must pass JSON.parse() with no modification.
+OUTPUT FORMAT — you MUST follow this exactly:
+- Output ONLY card blocks as shown below. No JSON, no markdown, no commentary, no numbering.
+- Each card starts with the word CARD on its own line.
+- The next line is FRONT: followed by the question.
+- The next line is BACK: followed by the answer.
+- One blank line between cards.
+- Quotes, special characters, and punctuation are fine — write naturally.
 
 Text:
 ${truncatedText}
 
-Output format — exactly this, nothing else:
-[
-  { "front": "question", "back": "answer" },
-  { "front": "question", "back": "answer" }
-]`;
+Output — exactly this structure, nothing else:
+CARD
+FRONT: question here
+BACK: answer here
+
+CARD
+FRONT: question here
+BACK: answer here`;
 
     const anthropicBody = {
       model: MODEL,
@@ -352,6 +344,21 @@ Output format — exactly this, nothing else:
       res.writeHead(502, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: e.message.includes("timed out") ? "Deck generation timed out — try a shorter document." : "Upstream request to Anthropic failed." }));
       return;
+    }
+
+    // 529 overloaded — retry once after a short delay
+    if (anthropicResponse.status === 529) {
+      console.warn("[generate-deck] Anthropic 529 overloaded — retrying in 2s");
+      await new Promise(r => setTimeout(r, 2000));
+      try {
+        anthropicResponse = await Promise.race([callAnthropic(apiKey, anthropicBody), timeoutPromise]);
+        console.log(`[generate-deck] retry responded in ${Date.now() - t0}ms, status=${anthropicResponse.status}`);
+      } catch (e) {
+        console.error(`[generate-deck] retry failed:`, e.message);
+        res.writeHead(502, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Anthropic is overloaded. Please try again in a moment." }));
+        return;
+      }
     }
 
     if (anthropicResponse.status !== 200) {
@@ -382,32 +389,38 @@ Output format — exactly this, nothing else:
       return;
     }
 
-    const jsonText = claudeText
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/\s*```\s*$/, "")
-      .trim();
+    // Primary path: tagged plain-text parsing (deterministic, no JSON escaping issues)
+    console.log("[generate-deck] parsing tagged output, first 80 chars:", claudeText.slice(0, 80));
+    let cards = parseTaggedCards(claudeText);
+    let parsePath = "tagged";
 
-    console.log("[generate-deck] parsing JSON, first 80 chars:", jsonText.slice(0, 80));
-    let cards;
-    try {
-      cards = JSON.parse(jsonText);
-      if (!Array.isArray(cards)) throw new Error("Expected array");
-      console.log("[generate-deck] parsed", cards.length, "cards (first try)");
-    } catch (firstErr) {
-      // First parse failed — attempt one repair pass for unescaped inner quotes.
-      console.warn("[generate-deck] first parse failed:", firstErr.message, "— attempting repair");
+    if (cards.length === 0) {
+      // Fallback: model may have returned JSON despite instructions — try parsing it
+      console.warn("[generate-deck] tagged parse yielded 0 cards — attempting JSON fallback");
+      const jsonText = claudeText
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```\s*$/, "")
+        .trim();
       try {
-        const repaired = repairJson(jsonText);
-        cards = JSON.parse(repaired);
-        if (!Array.isArray(cards)) throw new Error("Expected array");
-        console.log("[generate-deck] parsed", cards.length, "cards (after repair)");
-      } catch (repairErr) {
-        console.error("[generate-deck] repair parse failed:", repairErr.message, "— raw text:", claudeText.slice(0, 300));
-        res.writeHead(502, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Claude did not return valid JSON." }));
-        return;
+        const parsed = JSON.parse(jsonText);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          cards = parsed;
+          parsePath = "json-fallback";
+          console.log("[generate-deck] JSON fallback parsed", cards.length, "cards");
+        }
+      } catch (_) {
+        // JSON fallback also failed — log and return error
       }
     }
+
+    if (cards.length === 0) {
+      console.error("[generate-deck] all parse paths yielded 0 cards — raw text:", claudeText.slice(0, 300));
+      res.writeHead(502, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Claude did not return parseable flashcard content." }));
+      return;
+    }
+
+    console.log(`[generate-deck] parsed ${cards.length} cards via ${parsePath}`);
 
     const result = cards
       .filter(c => typeof c.front === "string" && typeof c.back === "string")
