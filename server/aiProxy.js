@@ -218,6 +218,8 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.url === "/generate-deck") {
+    console.log("[generate-deck] entered handler");
+
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       res.writeHead(500, { "Content-Type": "application/json" });
@@ -228,7 +230,9 @@ const server = http.createServer(async (req, res) => {
     let input;
     try {
       input = await readBody(req);
+      console.log("[generate-deck] body parsed, text length:", input?.text?.length ?? 0);
     } catch (e) {
+      console.error("[generate-deck] body parse error:", e.message);
       res.writeHead(400, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: e.message }));
       return;
@@ -240,6 +244,7 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ error: "text is required." }));
       return;
     }
+    console.log("[generate-deck] validation passed");
 
     const maxChars = 40000;
     const truncatedText = text.length > maxChars ? text.slice(0, maxChars) + "\n[... content truncated ...]" : text;
@@ -265,18 +270,28 @@ Return ONLY valid JSON — an array of objects, no markdown fences, no commentar
 
     const anthropicBody = {
       model: MODEL,
-      max_tokens: 3000,
+      max_tokens: 4000,
       temperature: 0.3,
       messages: [{ role: "user", content: deckPrompt }],
     };
 
+    // Railway's gateway timeout is 60 s. Time out the Anthropic call at 55 s so
+    // Node can send a clean 502 before Railway returns an opaque 503.
+    const ANTHROPIC_TIMEOUT_MS = 55_000;
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Anthropic request timed out after ${ANTHROPIC_TIMEOUT_MS / 1000}s`)), ANTHROPIC_TIMEOUT_MS)
+    );
+
     let anthropicResponse;
+    console.log("[generate-deck] calling Anthropic, prompt chars:", deckPrompt.length);
+    const t0 = Date.now();
     try {
-      anthropicResponse = await callAnthropic(apiKey, anthropicBody);
+      anthropicResponse = await Promise.race([callAnthropic(apiKey, anthropicBody), timeoutPromise]);
+      console.log(`[generate-deck] Anthropic responded in ${Date.now() - t0}ms, status=${anthropicResponse.status}, body bytes=${anthropicResponse.body.length}`);
     } catch (e) {
-      console.error("Anthropic request failed:", e.message);
+      console.error(`[generate-deck] Anthropic call failed after ${Date.now() - t0}ms:`, e.message);
       res.writeHead(502, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: "Upstream request to Anthropic failed." }));
+      res.end(JSON.stringify({ error: e.message.includes("timed out") ? "Deck generation timed out — try a shorter document." : "Upstream request to Anthropic failed." }));
       return;
     }
 
@@ -300,6 +315,7 @@ Return ONLY valid JSON — an array of objects, no markdown fences, no commentar
     try {
       const parsed = JSON.parse(anthropicResponse.body);
       claudeText = parsed?.content?.[0]?.text ?? "";
+      console.log("[generate-deck] extracted model text, length:", claudeText.length);
     } catch (e) {
       console.error("[generate-deck] Failed to parse Anthropic response body:", anthropicResponse.body);
       res.writeHead(502, { "Content-Type": "application/json" });
@@ -312,12 +328,14 @@ Return ONLY valid JSON — an array of objects, no markdown fences, no commentar
       .replace(/\s*```\s*$/, "")
       .trim();
 
+    console.log("[generate-deck] parsing JSON, first 80 chars:", jsonText.slice(0, 80));
     let cards;
     try {
       cards = JSON.parse(jsonText);
       if (!Array.isArray(cards)) throw new Error("Expected array");
+      console.log("[generate-deck] parsed", cards.length, "cards");
     } catch (e) {
-      console.error("Claude returned non-JSON for deck generation:", claudeText);
+      console.error("[generate-deck] JSON parse failed:", e.message, "— raw text:", claudeText.slice(0, 200));
       res.writeHead(502, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: "Claude did not return valid JSON." }));
       return;
@@ -327,6 +345,7 @@ Return ONLY valid JSON — an array of objects, no markdown fences, no commentar
       .filter(c => typeof c.front === "string" && typeof c.back === "string")
       .map(c => ({ front: c.front.trim(), back: c.back.trim() }));
 
+    console.log("[generate-deck] sending", result.length, "cards → 200");
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ cards: result }));
     return;
