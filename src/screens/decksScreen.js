@@ -6,6 +6,7 @@ import { escapeHtml, uid } from "../utils.js";
 export function renderDecksScreen(appEl, { renderAll, save, state, currentUserId }) {
   let editingDeckId = null;
   let editingTitle = "";
+  let _docCloseMenu = null;
 
   async function render() {
     const decks = await listDecks(currentUserId);
@@ -123,7 +124,9 @@ export function renderDecksScreen(appEl, { renderAll, save, state, currentUserId
       newDeckMenu.style.display = isOpen ? "none" : "block";
     });
 
-    document.addEventListener("click", closeMenu, { once: true });
+    if (_docCloseMenu) document.removeEventListener("click", _docCloseMenu);
+    _docCloseMenu = () => closeMenu();
+    document.addEventListener("click", _docCloseMenu);
 
     // ── Manual creation ─────────────────────────────────────────────────────
 
@@ -260,26 +263,33 @@ export function renderDecksScreen(appEl, { renderAll, save, state, currentUserId
         generateBtn.disabled = false;
       });
 
-      reviewDiv.querySelector("#openEditorBtn")?.addEventListener("click", async () => {
-        const title = titleInput?.value?.trim() || file.name.replace(/\.pdf$/i, "") || "Generated Deck";
-        if (titleInput) titleInput.value = "";
-        const newId = await createDeck(currentUserId, title);
+      const openEditorBtn = reviewDiv.querySelector("#openEditorBtn");
+      openEditorBtn?.addEventListener("click", async () => {
+        openEditorBtn.disabled = true;
+        try {
+          const title = titleInput?.value?.trim() || file.name.replace(/\.pdf$/i, "") || "Generated Deck";
+          if (titleInput) titleInput.value = "";
+          const newId = await createDeck(currentUserId, title);
 
-        const LONG_ANSWER_WORD_THRESHOLD = 15;
-        const now = Date.now();
-        const cards = validRaw.map(c => ({
-          id: uid(),
-          front: c.front.trim(),
-          back: c.back.trim(),
-          stage: 1,
-          createdAt: now,
-          lastSeenAt: null,
-          stage3Mastered: false,
-          longAnswer: c.back.trim().split(/\s+/).length > LONG_ANSWER_WORD_THRESHOLD,
-          gradingMode: c.back.trim().split(/\s+/).length > LONG_ANSWER_WORD_THRESHOLD ? "concept" : "exact",
-        }));
+          const LONG_ANSWER_WORD_THRESHOLD = 15;
+          const now = Date.now();
+          const cards = validRaw.map(c => ({
+            id: uid(),
+            front: c.front.trim(),
+            back: c.back.trim(),
+            stage: 1,
+            createdAt: now,
+            lastSeenAt: null,
+            stage3Mastered: false,
+            longAnswer: c.back.trim().split(/\s+/).length > LONG_ANSWER_WORD_THRESHOLD,
+            gradingMode: c.back.trim().split(/\s+/).length > LONG_ANSWER_WORD_THRESHOLD ? "concept" : "exact",
+          }));
 
-        await openDeck(newId, cards);
+          await openDeck(newId, cards);
+        } catch (e) {
+          showError(`Could not open editor: ${e.message}`);
+          openEditorBtn.disabled = false;
+        }
       });
     });
 
