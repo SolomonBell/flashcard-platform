@@ -340,6 +340,13 @@ export function renderDecksScreen(appEl, { renderAll, save, state, currentUserId
         const title = e.target?.getAttribute("data-deck-title") || "this deck";
         if (confirm(`Delete "${title}"? This cannot be undone.`)) {
           await deleteDeck(currentUserId, deleteId);
+          if (state.deckId === deleteId) {
+            state.deckId = null;
+            state.deckTitle = null;
+            state.cards = [];
+            state.lastShownCardId = null;
+            state.largeDeckBacklog = null;
+          }
           editingDeckId = null;
           await render();
         }
