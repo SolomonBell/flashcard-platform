@@ -331,19 +331,14 @@ BACK: answer here`;
       return;
     }
 
-    // 529 overloaded — retry once after a short delay
+    // 529 overloaded — do not auto-retry; the payload is large and a duplicate
+    // call would cost the same tokens with low odds of success. Return a clean
+    // retryable error so the client can prompt the user to try again manually.
     if (anthropicResponse.status === 529) {
-      console.warn("[generate-deck] Anthropic 529 overloaded — retrying in 2s");
-      await new Promise(r => setTimeout(r, 2000));
-      try {
-        anthropicResponse = await Promise.race([callAnthropic(apiKey, anthropicBody), timeoutPromise]);
-        console.log(`[generate-deck] retry responded in ${Date.now() - t0}ms, status=${anthropicResponse.status}`);
-      } catch (e) {
-        console.error(`[generate-deck] retry failed:`, e.message);
-        res.writeHead(502, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "Anthropic is overloaded. Please try again in a moment." }));
-        return;
-      }
+      console.warn("[generate-deck] Anthropic 529 overloaded — returning retryable error (no auto-retry)");
+      res.writeHead(503, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "AI is currently overloaded. Please wait a moment and try again." }));
+      return;
     }
 
     if (anthropicResponse.status !== 200) {
