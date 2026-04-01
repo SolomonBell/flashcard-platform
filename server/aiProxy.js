@@ -289,39 +289,24 @@ const server = http.createServer(async (req, res) => {
     const maxChars = 40000;
     const truncatedText = text.length > maxChars ? text.slice(0, maxChars) + "\n[... content truncated ...]" : text;
 
-    const deckPrompt = `You are a flashcard generator. Read the following text and create as many high-quality flashcards as the material warrants — enough to cover all important facts, definitions, concepts, and ideas, but without padding or repetition.
+    const deckPrompt = `You are a flashcard generator. Create as many high-quality flashcards as the text warrants — no padding, no repetition.
 
-Rules:
-- Each FRONT is a concise question or prompt (1 sentence max)
-- Each BACK is the correct answer (as short as possible while still complete)
-- Cover every significant, testable idea in the text
-- Do not repeat the same concept twice even with different wording
-- Do not include trivial, obvious, or filler cards
-- Generate more cards for dense material, fewer for sparse material — let the content guide the count
-
-OUTPUT FORMAT — you MUST follow this exactly:
-- Output ONLY card blocks as shown below. No JSON, no markdown, no commentary, no numbering.
-- Each card starts with the word CARD on its own line.
-- The next line is FRONT: followed by the question.
-- The next line is BACK: followed by the answer.
-- One blank line between cards.
-- Quotes, special characters, and punctuation are fine — write naturally.
+- FRONT: one concise question (1 sentence)
+- BACK: shortest complete answer
+- Cover every significant, testable idea
+- Output ONLY the CARD/FRONT/BACK format below — no JSON, no markdown, no commentary
 
 Text:
 ${truncatedText}
 
-Output — exactly this structure, nothing else:
-CARD
-FRONT: question here
-BACK: answer here
-
+Respond in exactly this format, one card per concept:
 CARD
 FRONT: question here
 BACK: answer here`;
 
     const anthropicBody = {
       model: MODEL,
-      max_tokens: 4000,
+      max_tokens: 3000,
       temperature: 0,
       messages: [{ role: "user", content: deckPrompt }],
     };
