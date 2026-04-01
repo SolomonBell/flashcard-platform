@@ -2,6 +2,17 @@ import { config } from "./config.js";
 const PROXY_URL     = `${config?.aiProxyUrl    || "http://localhost:3001"}/grade`;
 const PROXY_SECRET  =  config?.proxySecret     || "";
 
+// ── Grading cache ─────────────────────────────────────────────────────────────
+// In-memory, session-scoped. Identical inputs (same card + same answer) reuse
+// the cached result instead of calling the proxy again. Only successful
+// responses are cached; errors always retry.
+const _gradeCache = new Map();
+
+function _cacheKey(promptFront, expectedAnswer, userAnswer) {
+  const norm = (s) => String(s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  return `${norm(promptFront)}||${norm(expectedAnswer)}||${norm(userAnswer)}`;
+}
+
 const ERROR_RESULT = {
   correct: false,
   score: 0,
@@ -22,6 +33,9 @@ export async function gradeLongAnswer({ promptFront, expectedAnswer, userAnswer 
     return { ...ERROR_RESULT, feedback: "Please provide an answer." };
   }
 
+  const key = _cacheKey(promptFront, expectedAnswer, userAnswer);
+  if (_gradeCache.has(key)) return _gradeCache.get(key);
+
   try {
     const response = await fetch(PROXY_URL, {
       method: "POST",
@@ -37,7 +51,9 @@ export async function gradeLongAnswer({ promptFront, expectedAnswer, userAnswer 
       return ERROR_RESULT;
     }
 
-    return await response.json();
+    const result = await response.json();
+    _gradeCache.set(key, result);
+    return result;
   } catch (err) {
     console.error("gradeLongAnswer error:", err);
     return ERROR_RESULT;

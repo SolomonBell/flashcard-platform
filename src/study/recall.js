@@ -162,7 +162,8 @@ export function renderRecall(appEl, state, current, deps) {
     });
 
     if (step === "answer") {
-      appEl.querySelector("#submitRecall").addEventListener("click", async () => {
+      const submitBtn = appEl.querySelector("#submitRecall");
+      submitBtn.addEventListener("click", async () => {
         const userAnswer = inputEl.value.trim();
         if (!userAnswer) {
           alert("Please enter an answer.");
@@ -171,6 +172,8 @@ export function renderRecall(appEl, state, current, deps) {
 
         const c = state.cards.find((x) => x.id === current.id);
         if (!c) return;
+
+        submitBtn.disabled = true;
 
         const correctAnswer = String(current.back ?? "").trim();
         let isCorrect;
