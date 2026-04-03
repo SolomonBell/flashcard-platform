@@ -78,8 +78,9 @@ setInterval(() => {
  *   CARD
  *   FRONT: What is a "sect"?
  *   BACK: a subgroup within a larger religious body
+ *   EXPLANATION: Sects form when a minority within a religion disagrees on doctrine or practice.
  *
- * Returns an array of { front, back } objects with empty cards filtered out.
+ * Returns an array of { front, back, explanation } objects with empty cards filtered out.
  * This format tolerates quotes, control characters, and any other text that
  * would break JSON.parse — there is nothing to escape or encode.
  */
@@ -90,23 +91,43 @@ function parseTaggedCards(text) {
   for (const block of blocks) {
     let front = null;
     let back = null;
+    let explanation = null;
     for (const raw of block.split("\n")) {
       const line = raw.trimEnd();
       if (front === null && /^FRONT:\s*/i.test(line)) {
         front = line.replace(/^FRONT:\s*/i, "").trim();
       } else if (back === null && /^BACK:\s*/i.test(line)) {
         back = line.replace(/^BACK:\s*/i, "").trim();
-      } else if (front !== null && back === null && !/^BACK:\s*/i.test(line) && line !== "") {
+      } else if (explanation === null && /^EXPLANATION:\s*/i.test(line)) {
+        explanation = line.replace(/^EXPLANATION:\s*/i, "").trim();
+      } else if (front !== null && back === null && !/^BACK:\s*/i.test(line) && !/^EXPLANATION:\s*/i.test(line) && line !== "") {
         // multi-line FRONT (rare but possible) — append
         front += " " + line.trim();
-      } else if (back !== null && line !== "" && !/^FRONT:\s*/i.test(line)) {
+      } else if (back !== null && explanation === null && !/^EXPLANATION:\s*/i.test(line) && !/^FRONT:\s*/i.test(line) && line !== "") {
         // multi-line BACK — append
         back += " " + line.trim();
+      } else if (explanation !== null && !/^FRONT:\s*/i.test(line) && !/^BACK:\s*/i.test(line) && line !== "") {
+        // multi-line EXPLANATION — append
+        explanation += " " + line.trim();
       }
     }
-    if (front && back) cards.push({ front: front.trim(), back: back.trim() });
+    if (front && back) cards.push({ front: front.trim(), back: back.trim(), explanation: explanation?.trim() ?? null });
   }
   return cards;
+}
+
+/**
+ * Safeguard: if an explanation literally contains the back answer (case-insensitive,
+ * normalised whitespace) it gives away the answer before the student can attempt it.
+ * Replace such explanations with a neutral conceptual prompt.
+ */
+function sanitizeExplanation(back, explanation) {
+  if (!explanation) return explanation;
+  const norm = s => String(s).trim().toLowerCase().replace(/\s+/g, " ");
+  if (norm(explanation).includes(norm(back))) {
+    return "Review the underlying concept and reasoning rather than memorizing the exact wording.";
+  }
+  return explanation;
 }
 
 // ── Anthropic forwarding ─────────────────────────────────────────────────────
@@ -292,9 +313,14 @@ const server = http.createServer(async (req, res) => {
     const deckPrompt = `You are a flashcard generator. Create as many high-quality flashcards as the text warrants — no padding, no repetition.
 
 - FRONT: one concise question (1 sentence)
-- BACK: shortest complete answer
+- BACK: shortest complete answer (the answer only — no explanation, no "Answer: ..." prefix)
+- EXPLANATION: one brief sentence explaining *why* the answer is correct or the key concept behind it.
+  Rules for EXPLANATION:
+    * Do NOT copy, repeat, or paraphrase the BACK answer text.
+    * Do NOT include "Answer: ..." or start with the answer word(s).
+    * Focus on the underlying reason, mechanism, or context — not the answer itself.
 - Cover every significant, testable idea
-- Output ONLY the CARD/FRONT/BACK format below — no JSON, no markdown, no commentary
+- Output ONLY the CARD/FRONT/BACK/EXPLANATION format below — no JSON, no markdown, no commentary
 
 Text:
 ${truncatedText}
@@ -302,7 +328,8 @@ ${truncatedText}
 Respond in exactly this format, one card per concept:
 CARD
 FRONT: question here
-BACK: answer here`;
+BACK: answer here
+EXPLANATION: conceptual explanation here (must not repeat the BACK answer)`;
 
     const anthropicBody = {
       model: MODEL,
@@ -404,7 +431,11 @@ BACK: answer here`;
 
     const result = cards
       .filter(c => typeof c.front === "string" && typeof c.back === "string")
-      .map(c => ({ front: c.front.trim(), back: c.back.trim() }));
+      .map(c => ({
+        front: c.front.trim(),
+        back: c.back.trim(),
+        explanation: sanitizeExplanation(c.back.trim(), c.explanation ?? null),
+      }));
 
     console.log("[generate-deck] sending", result.length, "cards → 200");
     res.writeHead(200, { "Content-Type": "application/json" });
