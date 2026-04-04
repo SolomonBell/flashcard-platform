@@ -55,7 +55,7 @@ function renderBadgeEditor(badges, visibleSlots) {
     ).join("");
     return `
       <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:6px;">
-        <input type="text" id="badge-label-${i}" placeholder="Badge ${i + 1} label" maxlength="20"
+        <input type="text" id="badge-label-${i}" placeholder="Badge label" maxlength="20"
           value="${label}"
           style="flex:1; min-width:100px; padding:3px 6px; font-size:0.8rem;" />
         <select id="badge-color-${i}"
