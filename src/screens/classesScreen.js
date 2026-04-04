@@ -12,6 +12,25 @@ import {
 } from "../data/store/index.js";
 import { escapeHtml } from "../utils.js";
 
+// ── Badge helpers ─────────────────────────────────────────────────────────────
+
+function getTextColor(hex) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.5 ? "#111827" : "#ffffff";
+}
+
+function renderBadgePills(badges) {
+  if (!badges || badges.length === 0) return "";
+  return badges.map(b => {
+    const color = b.color || "#3b82f6";
+    const text  = getTextColor(color);
+    return `<span style="display:inline-block; padding:2px 8px; border-radius:999px; font-size:0.7rem; font-weight:500; background:${escapeHtml(color)}; color:${text}; white-space:nowrap;">${escapeHtml(b.label || "")}</span>`;
+  }).join(" ");
+}
+
 export async function renderClassesScreen(appEl, { renderAll, state }) {
   const currentUser = await getCurrentUser();
   if (!currentUser) return;
@@ -194,9 +213,15 @@ export async function renderClassesScreen(appEl, { renderAll, state }) {
                   ${sharedDecks.length === 0
                     ? `<p class="small" style="color:var(--muted); margin-top:4px;">No decks shared yet.</p>`
                     : sharedDecks.map(sd => `
-                      <div style="display:flex; align-items:center; gap:12px; margin-top:8px; flex-wrap:wrap;">
-                        <span style="flex:1;">${escapeHtml(sd.deckSnapshot.deckName)}</span>
-                        <button type="button" class="primary small" data-study-shared-id="${escapeHtml(sd.id)}">Study</button>
+                      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;
+                                  margin-top:6px; padding:8px 10px;
+                                  border:1px solid var(--border,#e5e7eb); border-radius:8px;">
+                        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; min-width:0;">
+                          <span style="font-weight:500;">${escapeHtml(sd.deckSnapshot.deckName)}</span>
+                          ${renderBadgePills(sd.deckSnapshot.badges || [])}
+                        </div>
+                        <button type="button" class="primary small" data-study-shared-id="${escapeHtml(sd.id)}"
+                          style="flex-shrink:0;">Study</button>
                       </div>
                     `).join("")}
                 </div>`;

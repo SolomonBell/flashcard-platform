@@ -703,10 +703,12 @@ export const supabaseStore = {
     }
 
     if (existing) {
-      // Update snapshot (picks up any rename) + backfill source_deck_id, then reset progress
+      // Update snapshot (picks up any rename) + backfill source_deck_id, then reset progress.
+      // Preserve teacher-assigned badges so re-sharing a deck doesn't wipe them.
+      const updatedSnapshot = { ...snapshot, badges: existing.deck_snapshot?.badges || [] };
       const { data, error } = await sb
         .from("shared_decks")
-        .update({ deck_snapshot: snapshot, last_edited_at: now, source_deck_id: sourceDeckId })
+        .update({ deck_snapshot: updatedSnapshot, last_edited_at: now, source_deck_id: sourceDeckId })
         .eq("id", existing.id)
         .select()
         .single();
@@ -731,6 +733,35 @@ export const supabaseStore = {
       .single();
     if (error) throw error;
     return { ...mapSharedDeck(data), isNew: true };
+  },
+
+  /**
+   * Saves teacher-assigned badges onto a shared deck's snapshot.
+   * @param {string} sharedDeckId
+   * @param {Array<{label:string, color:string}>} badges  — max 2 items, enforced here
+   * @returns {Promise<object>} mapped shared deck
+   */
+  updateSharedDeckBadges: async (sharedDeckId, badges) => {
+    const sb = await getSupabaseClient();
+    const { data: current, error: fetchError } = await sb
+      .from("shared_decks")
+      .select("deck_snapshot")
+      .eq("id", sharedDeckId)
+      .single();
+    if (fetchError) throw fetchError;
+    const safeBadges = (badges || []).slice(0, 2).map(b => ({
+      label: String(b.label || "").trim().slice(0, 20),
+      color: String(b.color || "#3b82f6"),
+    }));
+    const updatedSnapshot = { ...(current.deck_snapshot || {}), badges: safeBadges };
+    const { data, error } = await sb
+      .from("shared_decks")
+      .update({ deck_snapshot: updatedSnapshot, last_edited_at: new Date().toISOString() })
+      .eq("id", sharedDeckId)
+      .select()
+      .single();
+    if (error) throw error;
+    return mapSharedDeck(data);
   },
 
   /**

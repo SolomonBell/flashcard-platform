@@ -8,9 +8,81 @@ import {
   getClassById,
   addStudentToClass, removeStudentFromClass,
   getSharedDecksByClass, shareDeckToClass, deleteSharedDeck,
+  updateSharedDeckBadges,
   listDecks, getDeck,
 } from "../data/store/index.js";
 import { escapeHtml } from "../utils.js";
+
+// ── Badge helpers ─────────────────────────────────────────────────────────────
+
+const BADGE_COLORS = [
+  { label: "Blue",   value: "#3b82f6" },
+  { label: "Green",  value: "#22c55e" },
+  { label: "Orange", value: "#f97316" },
+  { label: "Red",    value: "#ef4444" },
+  { label: "Purple", value: "#a855f7" },
+];
+
+function getTextColor(hex) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.5 ? "#111827" : "#ffffff";
+}
+
+function renderBadgePills(badges) {
+  if (!badges || badges.length === 0) return "";
+  return badges.map(b => {
+    const color = b.color || "#3b82f6";
+    const text  = getTextColor(color);
+    return `<span style="display:inline-block; padding:2px 8px; border-radius:999px; font-size:0.7rem; font-weight:500; background:${escapeHtml(color)}; color:${text}; white-space:nowrap;">${escapeHtml(b.label || "")}</span>`;
+  }).join(" ");
+}
+
+function renderBadgeEditor(badges) {
+  const canAdd = badges.length < 2;
+  const currentHtml = badges.length === 0
+    ? `<span style="font-size:0.75rem; color:var(--muted);">No badges yet.</span>`
+    : badges.map((b, i) => {
+        const color = b.color || "#3b82f6";
+        const text  = getTextColor(color);
+        return `<span style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:999px; font-size:0.7rem; font-weight:500; background:${escapeHtml(color)}; color:${text};">
+          ${escapeHtml(b.label)}
+          <button type="button" data-badge-remove="${i}" style="background:none; border:none; cursor:pointer; color:inherit; padding:0; font-size:0.75rem; line-height:1;">×</button>
+        </span>`;
+      }).join(" ");
+
+  const colorOptions = BADGE_COLORS.map(c =>
+    `<option value="${c.value}">${c.label}</option>`
+  ).join("");
+
+  return `
+    <div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border,#e5e7eb);">
+      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+        ${currentHtml}
+      </div>
+      ${canAdd ? `
+        <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+          <input type="text" id="badge-label-input" placeholder="Label (max 20 chars)" maxlength="20"
+            style="flex:1; min-width:100px; padding:3px 6px; font-size:0.8rem;" />
+          <select id="badge-color-select"
+            style="padding:3px 6px; font-size:0.8rem; border:1px solid var(--border,#e5e7eb); border-radius:6px;">
+            ${colorOptions}
+          </select>
+          <button type="button" class="small" data-badge-add
+            style="padding:3px 8px; font-size:0.8rem;">Add</button>
+        </div>
+      ` : `<p style="font-size:0.75rem; color:var(--muted); margin:0 0 8px;">Maximum 2 badges reached.</p>`}
+      <div style="display:flex; gap:6px;">
+        <button type="button" class="primary small" data-badge-save
+          style="padding:3px 8px; font-size:0.8rem;">Save</button>
+        <button type="button" class="small" data-badge-cancel
+          style="padding:3px 8px; font-size:0.8rem;">Cancel</button>
+      </div>
+    </div>
+  `;
+}
 
 export async function renderClassDetailScreen(appEl, { renderAll, state }) {
   const currentUser = await getCurrentUser();
@@ -35,6 +107,10 @@ export async function renderClassDetailScreen(appEl, { renderAll, state }) {
   const df  = { query: "", sort: "az", selected: null, open: false };
   const stf = { query: "", sort: "az" };
   const sdf = { query: "", sort: "newest" };
+
+  // Badge editor state
+  let badgeEditId    = null;
+  let pendingBadges  = [];
 
   const ctrlRow = `display:flex; gap:6px; align-items:center; margin-bottom:6px;`;
   const srchSty = `flex:1; padding:4px 6px; font-size:12px; border:1px solid var(--border); border-radius:6px;`;
@@ -195,10 +271,21 @@ export async function renderClassDetailScreen(appEl, { renderAll, state }) {
                 ${sharedDecks.length === 0
                   ? `<p class="small" style="color:var(--muted); margin:0;">No decks shared yet.</p>`
                   : sortedSd.map(sd => `
-                    <div data-name="${escapeHtml(sd.deckSnapshot.deckName)}" style="display:grid; grid-template-columns:1fr auto; align-items:center; gap:8px; margin-top:4px;">
-                      <span class="small">${escapeHtml(sd.deckSnapshot.deckName)}</span>
-                      <button type="button" class="danger small" style="padding:3px 8px; font-size:0.8rem;"
-                        data-delete-shared="${escapeHtml(sd.id)}">Remove</button>
+                    <div data-name="${escapeHtml(sd.deckSnapshot.deckName)}"
+                      style="border:1px solid var(--border,#e5e7eb); border-radius:8px; padding:8px 10px; margin-top:6px;">
+                      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; min-width:0;">
+                          <span class="small" style="font-weight:500;">${escapeHtml(sd.deckSnapshot.deckName)}</span>
+                          ${renderBadgePills(sd.deckSnapshot.badges || [])}
+                        </div>
+                        <div style="display:flex; gap:4px; flex-shrink:0;">
+                          <button type="button" class="small" style="padding:3px 8px; font-size:0.8rem;"
+                            data-badge-edit="${escapeHtml(sd.id)}">Set Badges</button>
+                          <button type="button" class="danger small" style="padding:3px 8px; font-size:0.8rem;"
+                            data-delete-shared="${escapeHtml(sd.id)}">Remove</button>
+                        </div>
+                      </div>
+                      ${badgeEditId === sd.id ? renderBadgeEditor(pendingBadges) : ""}
                     </div>
                   `).join("")}
               </div>
@@ -345,7 +432,7 @@ export async function renderClassDetailScreen(appEl, { renderAll, state }) {
       render();
     });
 
-    // ── Delegated: remove student / delete shared deck ───────────────────────
+    // ── Delegated: remove student / delete shared deck / badge editor ────────
     appEl.querySelector("section")?.addEventListener("click", async (e) => {
       const removeStudentId = e.target?.getAttribute("data-remove-student");
       if (removeStudentId) {
@@ -359,6 +446,53 @@ export async function renderClassDetailScreen(appEl, { renderAll, state }) {
       if (deleteSharedId) {
         await deleteSharedDeck(deleteSharedId);
         setMessage("Shared deck removed.");
+        await render();
+        return;
+      }
+
+      // Open badge editor for a shared deck
+      const badgeEditTarget = e.target?.getAttribute("data-badge-edit");
+      if (badgeEditTarget) {
+        const sd = sharedDecks.find(d => d.id === badgeEditTarget);
+        badgeEditId   = badgeEditTarget;
+        pendingBadges = JSON.parse(JSON.stringify(sd?.deckSnapshot?.badges || []));
+        await render();
+        return;
+      }
+
+      // Remove a pending badge by index (in-memory, not yet saved)
+      const removeIdx = e.target?.closest("[data-badge-remove]")?.getAttribute("data-badge-remove");
+      if (removeIdx !== null && removeIdx !== undefined) {
+        pendingBadges.splice(Number(removeIdx), 1);
+        await render();
+        return;
+      }
+
+      // Add a pending badge
+      if (e.target?.closest("[data-badge-add]")) {
+        const label = appEl.querySelector("#badge-label-input")?.value?.trim() || "";
+        const color = appEl.querySelector("#badge-color-select")?.value || "#3b82f6";
+        if (!label) return;
+        if (pendingBadges.length >= 2) return;
+        pendingBadges.push({ label: label.slice(0, 20), color });
+        await render();
+        return;
+      }
+
+      // Save badges to the store
+      if (e.target?.closest("[data-badge-save]")) {
+        await updateSharedDeckBadges(badgeEditId, pendingBadges);
+        badgeEditId   = null;
+        pendingBadges = [];
+        setMessage("Badges saved.");
+        await render();
+        return;
+      }
+
+      // Cancel badge editing
+      if (e.target?.closest("[data-badge-cancel]")) {
+        badgeEditId   = null;
+        pendingBadges = [];
         await render();
         return;
       }
