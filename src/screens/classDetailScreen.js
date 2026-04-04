@@ -45,12 +45,8 @@ function renderBadgePills(badges, editMode = false) {
   }).join(" ");
 }
 
-function renderBadgeEditor(badges) {
-  const colorOptions = BADGE_COLORS.map(c =>
-    `<option value="${c.value}">${c.label}</option>`
-  ).join("");
-
-  const rows = [0, 1].map(i => {
+function renderBadgeEditor(badges, visibleSlots) {
+  const rows = Array.from({ length: visibleSlots }, (_, i) => {
     const b     = badges[i] || {};
     const label = escapeHtml(b.label || "");
     const color = b.color || "#3b82f6";
@@ -69,9 +65,15 @@ function renderBadgeEditor(badges) {
       </div>`;
   }).join("");
 
+  const addBtn = visibleSlots < 2
+    ? `<button type="button" class="small" data-badge-add-slot
+         style="padding:3px 8px; font-size:0.8rem; margin-bottom:6px;">+ Add Badge</button>`
+    : "";
+
   return `
     <div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border,#e5e7eb);">
       ${rows}
+      ${addBtn}
       <div style="display:flex; gap:6px; margin-top:2px;">
         <button type="button" class="primary small" data-badge-save
           style="padding:3px 8px; font-size:0.8rem;">Save</button>
@@ -107,8 +109,9 @@ export async function renderClassDetailScreen(appEl, { renderAll, state }) {
   const sdf = { query: "", sort: "newest" };
 
   // Badge editor state
-  let badgeEditId    = null;
-  let pendingBadges  = [];
+  let badgeEditId        = null;
+  let pendingBadges      = [];
+  let visibleBadgeSlots  = 1;  // 1 or 2; controls how many input rows render
 
   const ctrlRow = `display:flex; gap:6px; align-items:center; margin-bottom:6px;`;
   const srchSty = `flex:1; padding:4px 6px; font-size:12px; border:1px solid var(--border); border-radius:6px;`;
@@ -283,7 +286,7 @@ export async function renderClassDetailScreen(appEl, { renderAll, state }) {
                             data-delete-shared="${escapeHtml(sd.id)}">Remove</button>
                         </div>
                       </div>
-                      ${badgeEditId === sd.id ? renderBadgeEditor(pendingBadges) : ""}
+                      ${badgeEditId === sd.id ? renderBadgeEditor(pendingBadges, visibleBadgeSlots) : ""}
                     </div>
                   `).join("")}
               </div>
@@ -452,8 +455,9 @@ export async function renderClassDetailScreen(appEl, { renderAll, state }) {
       const badgeEditTarget = e.target?.getAttribute("data-badge-edit");
       if (badgeEditTarget) {
         const sd = sharedDecks.find(d => d.id === badgeEditTarget);
-        badgeEditId   = badgeEditTarget;
-        pendingBadges = JSON.parse(JSON.stringify(sd?.deckSnapshot?.badges || []));
+        badgeEditId       = badgeEditTarget;
+        pendingBadges     = JSON.parse(JSON.stringify(sd?.deckSnapshot?.badges || []));
+        visibleBadgeSlots = Math.max(1, pendingBadges.length);
         await render();
         return;
       }
@@ -463,19 +467,28 @@ export async function renderClassDetailScreen(appEl, { renderAll, state }) {
         ?.getAttribute("data-badge-delete-pending");
       if (deletePendingIdx !== null && deletePendingIdx !== undefined) {
         pendingBadges.splice(Number(deletePendingIdx), 1);
+        visibleBadgeSlots = Math.max(1, pendingBadges.length);
         await render();
         return;
       }
 
-      // Save badges to the store — sync DOM inputs into pendingBadges first, then save
+      // Reveal second badge input row
+      if (e.target?.closest("[data-badge-add-slot]")) {
+        visibleBadgeSlots = 2;
+        await render();
+        return;
+      }
+
+      // Save badges to the store — read only visible slots
       if (e.target?.closest("[data-badge-save]")) {
-        const saved = [0, 1].map(i => ({
+        const saved = Array.from({ length: visibleBadgeSlots }, (_, i) => ({
           label: (appEl.querySelector(`#badge-label-${i}`)?.value || "").trim().slice(0, 20),
           color: appEl.querySelector(`#badge-color-${i}`)?.value || "#3b82f6",
         })).filter(b => b.label !== "");
         await updateSharedDeckBadges(badgeEditId, saved);
-        badgeEditId   = null;
-        pendingBadges = [];
+        badgeEditId       = null;
+        pendingBadges     = [];
+        visibleBadgeSlots = 1;
         setMessage("Badges saved.");
         await render();
         return;
@@ -483,8 +496,9 @@ export async function renderClassDetailScreen(appEl, { renderAll, state }) {
 
       // Cancel badge editing
       if (e.target?.closest("[data-badge-cancel]")) {
-        badgeEditId   = null;
-        pendingBadges = [];
+        badgeEditId       = null;
+        pendingBadges     = [];
+        visibleBadgeSlots = 1;
         await render();
         return;
       }
