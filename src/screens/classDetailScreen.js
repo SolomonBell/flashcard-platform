@@ -472,8 +472,15 @@ export async function renderClassDetailScreen(appEl, { renderAll, state }) {
         return;
       }
 
-      // Reveal second badge input row
+      // Reveal second badge input row — flush visible DOM inputs into pendingBadges first
       if (e.target?.closest("[data-badge-add-slot]")) {
+        for (let i = 0; i < visibleBadgeSlots; i++) {
+          const label = (appEl.querySelector(`#badge-label-${i}`)?.value || "").trim().slice(0, 20);
+          const color = appEl.querySelector(`#badge-color-${i}`)?.value || "#3b82f6";
+          if (label) {
+            pendingBadges[i] = { label, color };
+          }
+        }
         visibleBadgeSlots = 2;
         await render();
         return;
