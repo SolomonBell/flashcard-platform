@@ -31,12 +31,17 @@ function getTextColor(hex) {
   return luminance > 0.5 ? "#111827" : "#ffffff";
 }
 
-function renderBadgePills(badges) {
+function renderBadgePills(badges, editMode = false) {
   if (!badges || badges.length === 0) return "";
-  return badges.map(b => {
+  return badges.map((b, i) => {
     const color = b.color || "#3b82f6";
     const text  = getTextColor(color);
-    return `<span style="display:inline-block; padding:2px 8px; border-radius:999px; font-size:0.7rem; font-weight:500; background:${escapeHtml(color)}; color:${text}; white-space:nowrap;">${escapeHtml(b.label || "")}</span>`;
+    const xBtn  = editMode
+      ? `<button type="button" data-badge-delete-pending="${i}"
+           style="background:none; border:none; cursor:pointer; color:inherit; opacity:0.7;
+                  padding:0 0 0 4px; font-size:0.65rem; line-height:1;">×</button>`
+      : "";
+    return `<span style="display:inline-flex; align-items:center; padding:2px 8px; border-radius:999px; font-size:0.7rem; font-weight:500; background:${escapeHtml(color)}; color:${text}; white-space:nowrap;">${escapeHtml(b.label || "")}${xBtn}</span>`;
   }).join(" ");
 }
 
@@ -269,11 +274,11 @@ export async function renderClassDetailScreen(appEl, { renderAll, state }) {
                       <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
                         <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; min-width:0;">
                           <span class="small" style="font-weight:500;">${escapeHtml(sd.deckSnapshot.deckName)}</span>
-                          ${renderBadgePills(sd.deckSnapshot.badges || [])}
+                          ${renderBadgePills(badgeEditId === sd.id ? pendingBadges : (sd.deckSnapshot.badges || []), badgeEditId === sd.id)}
                         </div>
                         <div style="display:flex; gap:4px; flex-shrink:0;">
                           <button type="button" class="small" style="padding:3px 8px; font-size:0.8rem;"
-                            data-badge-edit="${escapeHtml(sd.id)}">Set Badges</button>
+                            data-badge-edit="${escapeHtml(sd.id)}">Badges</button>
                           <button type="button" class="danger small" style="padding:3px 8px; font-size:0.8rem;"
                             data-delete-shared="${escapeHtml(sd.id)}">Remove</button>
                         </div>
@@ -453,7 +458,16 @@ export async function renderClassDetailScreen(appEl, { renderAll, state }) {
         return;
       }
 
-      // Save badges to the store — read directly from the two fixed input rows
+      // Delete a pending badge by index — X button on pill
+      const deletePendingIdx = e.target?.closest("[data-badge-delete-pending]")
+        ?.getAttribute("data-badge-delete-pending");
+      if (deletePendingIdx !== null && deletePendingIdx !== undefined) {
+        pendingBadges.splice(Number(deletePendingIdx), 1);
+        await render();
+        return;
+      }
+
+      // Save badges to the store — sync DOM inputs into pendingBadges first, then save
       if (e.target?.closest("[data-badge-save]")) {
         const saved = [0, 1].map(i => ({
           label: (appEl.querySelector(`#badge-label-${i}`)?.value || "").trim().slice(0, 20),
