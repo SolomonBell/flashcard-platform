@@ -41,40 +41,33 @@ function renderBadgePills(badges) {
 }
 
 function renderBadgeEditor(badges) {
-  const canAdd = badges.length < 2;
-  const currentHtml = badges.length === 0
-    ? `<span style="font-size:0.75rem; color:var(--muted);">No badges yet.</span>`
-    : badges.map((b, i) => {
-        const color = b.color || "#3b82f6";
-        const text  = getTextColor(color);
-        return `<span style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:999px; font-size:0.7rem; font-weight:500; background:${escapeHtml(color)}; color:${text};">
-          ${escapeHtml(b.label)}
-          <button type="button" data-badge-remove="${i}" style="background:none; border:none; cursor:pointer; color:inherit; padding:0; font-size:0.75rem; line-height:1;">×</button>
-        </span>`;
-      }).join(" ");
-
   const colorOptions = BADGE_COLORS.map(c =>
     `<option value="${c.value}">${c.label}</option>`
   ).join("");
 
+  const rows = [0, 1].map(i => {
+    const b     = badges[i] || {};
+    const label = escapeHtml(b.label || "");
+    const color = b.color || "#3b82f6";
+    const selectedOptions = BADGE_COLORS.map(c =>
+      `<option value="${c.value}"${c.value === color ? " selected" : ""}>${c.label}</option>`
+    ).join("");
+    return `
+      <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:6px;">
+        <input type="text" id="badge-label-${i}" placeholder="Badge ${i + 1} label" maxlength="20"
+          value="${label}"
+          style="flex:1; min-width:100px; padding:3px 6px; font-size:0.8rem;" />
+        <select id="badge-color-${i}"
+          style="padding:3px 6px; font-size:0.8rem; border:1px solid var(--border,#e5e7eb); border-radius:6px;">
+          ${selectedOptions}
+        </select>
+      </div>`;
+  }).join("");
+
   return `
     <div style="margin-top:8px; padding-top:8px; border-top:1px solid var(--border,#e5e7eb);">
-      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
-        ${currentHtml}
-      </div>
-      ${canAdd ? `
-        <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
-          <input type="text" id="badge-label-input" placeholder="Label (max 20 chars)" maxlength="20"
-            style="flex:1; min-width:100px; padding:3px 6px; font-size:0.8rem;" />
-          <select id="badge-color-select"
-            style="padding:3px 6px; font-size:0.8rem; border:1px solid var(--border,#e5e7eb); border-radius:6px;">
-            ${colorOptions}
-          </select>
-          <button type="button" class="small" data-badge-add
-            style="padding:3px 8px; font-size:0.8rem;">Add</button>
-        </div>
-      ` : `<p style="font-size:0.75rem; color:var(--muted); margin:0 0 8px;">Maximum 2 badges reached.</p>`}
-      <div style="display:flex; gap:6px;">
+      ${rows}
+      <div style="display:flex; gap:6px; margin-top:2px;">
         <button type="button" class="primary small" data-badge-save
           style="padding:3px 8px; font-size:0.8rem;">Save</button>
         <button type="button" class="small" data-badge-cancel
@@ -460,28 +453,13 @@ export async function renderClassDetailScreen(appEl, { renderAll, state }) {
         return;
       }
 
-      // Remove a pending badge by index (in-memory, not yet saved)
-      const removeIdx = e.target?.closest("[data-badge-remove]")?.getAttribute("data-badge-remove");
-      if (removeIdx !== null && removeIdx !== undefined) {
-        pendingBadges.splice(Number(removeIdx), 1);
-        await render();
-        return;
-      }
-
-      // Add a pending badge
-      if (e.target?.closest("[data-badge-add]")) {
-        const label = appEl.querySelector("#badge-label-input")?.value?.trim() || "";
-        const color = appEl.querySelector("#badge-color-select")?.value || "#3b82f6";
-        if (!label) return;
-        if (pendingBadges.length >= 2) return;
-        pendingBadges.push({ label: label.slice(0, 20), color });
-        await render();
-        return;
-      }
-
-      // Save badges to the store
+      // Save badges to the store — read directly from the two fixed input rows
       if (e.target?.closest("[data-badge-save]")) {
-        await updateSharedDeckBadges(badgeEditId, pendingBadges);
+        const saved = [0, 1].map(i => ({
+          label: (appEl.querySelector(`#badge-label-${i}`)?.value || "").trim().slice(0, 20),
+          color: appEl.querySelector(`#badge-color-${i}`)?.value || "#3b82f6",
+        })).filter(b => b.label !== "");
+        await updateSharedDeckBadges(badgeEditId, saved);
         badgeEditId   = null;
         pendingBadges = [];
         setMessage("Badges saved.");
