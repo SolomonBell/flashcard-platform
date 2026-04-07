@@ -19,7 +19,6 @@ A full-stack flashcard study platform built for individual learners and classroo
   - [Performance & Cost Optimizations](#6-performance--cost-optimizations)
 - [Architecture](#architecture)
 - [Security](#security)
-- [Screenshots](#screenshots)
 - [Running Locally](#running-locally)
 - [Challenges & Learnings](#challenges--learnings)
 - [Future Work](#future-work)
