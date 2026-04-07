@@ -108,8 +108,6 @@ Every study session is tracked with card-level granularity.
 
 **Aggregate tracking:** A separate `analytics_aggregates` table maintains running totals per user per deck, avoiding expensive full-table scans for dashboard queries.
 
-**CSV export:** Users can export their full study history as a CSV for use in external tools.
-
 **Classroom analytics:** Teachers see per-student breakdowns across shared decks — which students are actively studying, accuracy rates, and last-studied timestamps.
 
 ---
@@ -184,20 +182,6 @@ AI API calls are the primary cost driver. Several optimizations keep usage in ch
 **Auth-based data isolation:** All queries are scoped to the authenticated user's ID. Supabase Auth tokens are validated on every request — there is no client-side trust.
 
 **Email-scoped enrollment:** Student enrollment uses email addresses as identifiers. Students must register with the same email their teacher entered, preventing unauthorized class access.
-
----
-
-## Screenshots
-
-> [Add screenshot — main study view]
-
-> [Add screenshot — deck creation / PDF import]
-
-> [Add screenshot — classroom dashboard]
-
-> [Add screenshot — analytics view]
-
-> [Add demo video or GIF]
 
 ---
 
