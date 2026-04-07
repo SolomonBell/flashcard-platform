@@ -2,7 +2,7 @@
 
 A full-stack flashcard study platform built for individual learners and classrooms. Combines spaced repetition, AI-assisted grading, PDF import, and classroom management into a single cohesive learning tool.
 
-**Live:** [firststepstudy.vercel.app](https://firststepstudy.vercel.app) &nbsp;|&nbsp; **Backend:** Railway
+**Live:** [firststepstudy.vercel.app](https://firststepstudy.com) &nbsp;|&nbsp; **Backend:** Railway
 
 ---
 
