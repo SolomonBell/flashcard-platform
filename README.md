@@ -263,8 +263,3 @@ The hardest product decision was the staged recall system. A simpler implementat
 - **Collaborative deck creation** — allow multiple teachers to co-edit a shared deck
 - **Adaptive difficulty** — weight card selection by historical accuracy per card, not just current stage
 
----
-
-## License
-
-MIT
